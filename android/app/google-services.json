@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "267338102086",
+    "project_id": "schaccsapp",
+    "storage_bucket": "schaccsapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:267338102086:android:4fbe28b0031114788c2147",
+        "android_client_info": {
+          "package_name": "com.example.myapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhvOJYH7i-zglydpyZGnd5QZpl_tJRZvc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
