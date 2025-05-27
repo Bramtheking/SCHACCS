@@ -1,0 +1,1 @@
+{"flutter":{"platforms":{"android":{"default":{"projectId":"schaccsapp","appId":"1:267338102086:android:4fbe28b0031114788c2147","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"schaccsapp","configurations":{"android":"1:267338102086:android:4fbe28b0031114788c2147","web":"1:267338102086:web:d1a7f2e46b79eae38c2147"}}}}}}
