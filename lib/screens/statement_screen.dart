@@ -880,8 +880,7 @@ Widget buildTotals() {
   double totalPaid = 0;
   double totalRequired = 0;
   double balance = 0;
-  double termRequired = 0;
-  double termPaid = 0;
+
   
   // Get fee summary data directly from Firestore - NO CALCULATIONS
   if (payments.isNotEmpty) {
