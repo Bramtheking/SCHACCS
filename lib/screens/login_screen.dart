@@ -179,7 +179,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (superSnap.docs.isNotEmpty) {
         print('🚀 Super-Admin login succeeded');
         await _saveRecentEmail(email); // Save email before navigating
-        Navigator.pushReplacementNamed(context, '/superAdmin');
+        Navigator.pushReplacementNamed(context, '/super-admin-dashboard');
         return;
       }
 

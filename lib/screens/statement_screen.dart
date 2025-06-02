@@ -27,7 +27,7 @@ class _StatementScreenState extends State<StatementScreen> {
   Map<String, dynamic>? selectedStudent;
   List<Map<String, dynamic>> payments = [];
   bool isLoading = true;
-  String? _selectedTimeFilter = 'termly'; // Changed default to termly
+  String? _selectedTimeFilter = 'term3'; // Changed default to term3
   
   // Color scheme - Changed to brown/orange
   final Color primaryColor = Color(0xFFB45309); // Amber 700
@@ -124,7 +124,7 @@ class _StatementScreenState extends State<StatementScreen> {
     }
   }
   
-  // Updated method to filter payments based on time selection
+  // Replace the _filterPayments method with:
   void _filterPayments() async {
     if (selectedStudentId == null) return;
     
@@ -135,37 +135,60 @@ class _StatementScreenState extends State<StatementScreen> {
     try {
       final schoolRef = FirebaseFirestore.instance.collection('schools').doc(widget.schoolCode);
       
-      // Get current date
-      final now = DateTime.now();
-      DateTime filterDate;
-      
-      if (_selectedTimeFilter == 'termly') {
-        // Filter for last term (3 months)
-        filterDate = DateTime(now.year, now.month - 3, now.day);
-      } else {
-        // Filter for last year
-        filterDate = DateTime(now.year - 1, now.month, now.day);
-      }
-      
-      // Convert to Timestamp for Firestore
-      final timestampFilter = Timestamp.fromDate(filterDate);
-      
-      // Query with proper index - Fixed to handle null selectedStudentId
-      final paymentQuery = await schoolRef
-        .collection('payments')
-        .where('studentId', isEqualTo: selectedStudentId!)
-        .where('date', isGreaterThanOrEqualTo: timestampFilter)
-        .orderBy('date', descending: true)
-        .get();
+      if (_selectedTimeFilter == 'yearly') {
+        // For yearly, get fee summary data
+        final feeSummaryQuery = await schoolRef
+          .collection('payments')
+          .where('studentId', isEqualTo: selectedStudentId!)
+          .where('type', isEqualTo: 'fee summary')
+          .get();
+          
+        final feeSummaryList = feeSummaryQuery.docs.map((doc) => doc.data()).toList();
         
-      final paymentList = paymentQuery.docs.map((doc) => doc.data()).toList();
-      
-      setState(() {
-        payments = paymentList;
-        isLoading = false;
-      });
+        setState(() {
+          payments = feeSummaryList;
+          isLoading = false;
+        });
+      } else {
+        // For terms, get payment history data filtered by date
+        DateTime now = DateTime.now();
+        DateTime startDate, endDate;
+        
+        if (_selectedTimeFilter == 'term3') {
+          // January to April
+          startDate = DateTime(now.year, 1, 1);
+          endDate = DateTime(now.year, 4, 30);
+        } else if (_selectedTimeFilter == 'term1') {
+          // May to August
+          startDate = DateTime(now.year, 5, 1);
+          endDate = DateTime(now.year, 8, 31);
+        } else { // term2
+          // September to December
+          startDate = DateTime(now.year, 9, 1);
+          endDate = DateTime(now.year, 12, 31);
+        }
+        
+        final timestampStart = Timestamp.fromDate(startDate);
+        final timestampEnd = Timestamp.fromDate(endDate);
+        
+        final paymentQuery = await schoolRef
+          .collection('payments')
+          .where('studentId', isEqualTo: selectedStudentId!)
+          .where('type', isEqualTo: 'payment history')
+          .where('date', isGreaterThanOrEqualTo: timestampStart)
+          .where('date', isLessThanOrEqualTo: timestampEnd)
+          .orderBy('date', descending: true)
+          .get();
+          
+        final paymentList = paymentQuery.docs.map((doc) => doc.data()).toList();
+        
+        setState(() {
+          payments = paymentList;
+          isLoading = false;
+        });
+      }
     } catch (e) {
-      print('Error filtering payments: $e'); // Debug print
+      print('Error filtering payments: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error loading payment data: ${e.toString()}'),
@@ -173,102 +196,112 @@ class _StatementScreenState extends State<StatementScreen> {
         ),
       );
       setState(() {
-        payments = []; // Set empty list on error
+        payments = [];
         isLoading = false;
       });
     }
   }
   
   // 1. Modern Header with School Logo
-  Widget buildHeader() {
-    return Card(
-      elevation: 6, // Increased elevation for better visibility
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      shadowColor: primaryColor.withOpacity(0.3), // Added shadow color
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            colors: [Colors.white, backgroundColor.withOpacity(0.5)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+ Widget buildHeader() {
+  final now = DateTime.now();
+  late final String termLabel;
+  if (now.month >= 1 && now.month <= 4) {
+    termLabel = 'Term 1';
+  } else if (now.month >= 5 && now.month <= 8) {
+    termLabel = 'Term 2';
+  } else {
+    termLabel = 'Term 3';
+  }
+  return Card(
+    elevation: 6, // Increased elevation for better visibility
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    shadowColor: primaryColor.withOpacity(0.3), // Added shadow color
+    child: Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [Colors.white, backgroundColor.withOpacity(0.5)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Padding(
-          padding: EdgeInsets.all(20), // Increased padding
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: primaryColor, width: 2),
-                    ),
-                    child: CircleAvatar(
-                      radius: 32, // Slightly larger
-                      backgroundColor: Colors.transparent,
-                      child: ClipOval(
-                        child: Image.network(
-                          schoolLogo,
-                          errorBuilder: (context, error, stackTrace) => 
-                              Icon(Icons.school, size: 44, color: primaryColor),
-                        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(20), // Increased padding
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: primaryColor, width: 2),
+                  ),
+                  child: CircleAvatar(
+                    radius: 32, // Slightly larger
+                    backgroundColor: Colors.transparent,
+                    child: ClipOval(
+                      child: Image.network(
+                        schoolLogo,
+                        errorBuilder: (context, error, stackTrace) =>
+                            Icon(Icons.school, size: 44, color: primaryColor),
                       ),
                     ),
                   ),
-                  SizedBox(width: 20),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          schoolName.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 20, // Increased font size
-                            fontWeight: FontWeight.bold,
-                            color: primaryColor,
-                          ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          'P.O. BOX $poBox • TEL: $phone',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                        ),
-                        Text(
-                          'Email: $email',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              Divider(thickness: 2, color: primaryColor.withOpacity(0.3)),
-              Container(
-                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: primaryColor.withOpacity(0.3)),
                 ),
-                child: Text(
-                  'Term 1 Fees Statement as at ${DateFormat('dd-MMM-yyyy').format(DateTime.now())}',
-                  style: TextStyle(
-                    fontSize: 15, 
-                    fontWeight: FontWeight.bold,
-                    color: primaryColor,
+                SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        schoolName.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 20, // Increased font size
+                          fontWeight: FontWeight.bold,
+                          color: primaryColor,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'P.O. BOX $poBox • TEL: $phone',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        'Email: $email',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
+                    ],
                   ),
-                  textAlign: TextAlign.center,
                 ),
+              ],
+            ),
+            Divider(thickness: 2, color: primaryColor.withOpacity(0.3)),
+            Container(
+              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: primaryColor.withOpacity(0.3)),
               ),
-            ],
-          ),
+              child: Text(
+                '$termLabel Fees Statement as at ${DateFormat('dd-MMM-yyyy').format(now)}',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: primaryColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
+
   
   // 2. Modernized Student Info Card with better visibility
   Widget buildStudentInfo() {
@@ -318,7 +351,7 @@ class _StatementScreenState extends State<StatementScreen> {
                 ),
               ],
             ),
-            SizedBox(height: 20),
+            SizedBox(height: 30),
             Row(
               children: [
                 Expanded(
@@ -332,7 +365,7 @@ class _StatementScreenState extends State<StatementScreen> {
                   child: StudentInfoItem(
                     icon: Icons.numbers,
                     label: 'ADM No',
-                    value: selectedStudent?['adm'] ?? '',
+                    value: selectedStudent?['admissionNo'] ?? '',
                   ),
                 ),
               ],
@@ -426,31 +459,14 @@ Widget buildPaymentsTable() {
               ],
             ),
           ),
-          payments.isEmpty ? 
-          Container(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            alignment: Alignment.center,
-            child: Column(
-              children: [
-                Icon(Icons.receipt_long, size: 56, color: Colors.grey[400]),
-                SizedBox(height: 20),
-                Text(
-                  'No payment records found',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ) :
-          // Enhanced Payment Cards Layout instead of table
+          // Always show payment fields, even if no payments found
           Container(
             padding: EdgeInsets.all(16),
-            child: Column(
-              children: payments.map((payment) => _buildPaymentCard(payment)).toList(),
-            ),
+            child: payments.isEmpty 
+                ? _buildEmptyPaymentCard() 
+                : Column(
+                    children: payments.map((payment) => _buildPaymentCard(payment)).toList(),
+                  ),
           ),
         ],
       ),
@@ -458,7 +474,157 @@ Widget buildPaymentsTable() {
   );
 }
 
-// New method to build individual payment cards with all fields
+// New method to build empty payment card with zero/null values
+Widget _buildEmptyPaymentCard() {
+  return Card(
+    margin: EdgeInsets.only(bottom: 12),
+    elevation: 3,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [Colors.white, backgroundColor.withOpacity(0.1)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: primaryColor.withOpacity(0.1)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with amount and date
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Text(
+                    'KES 0.00',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.calendar_today, size: 14, color: primaryColor),
+                      SizedBox(width: 4),
+                      Text(
+                        'No Date',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: primaryColor,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            
+            // Payment details in form-like layout with empty values
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    // Amount Field
+                    _PaymentDetailField(
+                      icon: Icons.attach_money,
+                      label: 'Amount',
+                      value: '0.00',
+                      isEmpty: true,
+                    ),
+                    Divider(height: 16, color: Colors.grey[300]),
+                    
+                    // Payment Mode Field
+                    _PaymentDetailField(
+                      icon: Icons.payment,
+                      label: 'Payment Mode',
+                      value: 'Not specified',
+                      isEmpty: true,
+                    ),
+                    Divider(height: 16, color: Colors.grey[300]),
+                    
+                    // Student ID Field
+                    _PaymentDetailField(
+                      icon: Icons.person,
+                      label: 'Student ID',
+                      value: 'Not specified',
+                      isEmpty: true,
+                    ),
+                    Divider(height: 16, color: Colors.grey[300]),
+                    
+                    // Date Field
+                    _PaymentDetailField(
+                      icon: Icons.event,
+                      label: 'Payment Date',
+                      value: 'Not specified',
+                      isEmpty: true,
+                    ),
+                    Divider(height: 16, color: Colors.grey[300]),
+                    
+                    // Recorded At field
+                    _PaymentDetailField(
+                      icon: Icons.access_time,
+                      label: 'Recorded At',
+                      value: 'Not specified',
+                      isEmpty: true,
+                    ),
+                    Divider(height: 16, color: Colors.grey[300]),
+                    
+                    // Reference Number field
+                    _PaymentDetailField(
+                      icon: Icons.confirmation_number,
+                      label: 'Reference',
+                      value: 'Not specified',
+                      isEmpty: true,
+                    ),
+                    Divider(height: 16, color: Colors.grey[300]),
+                    
+                    // Description field
+                    _PaymentDetailField(
+                      icon: Icons.description,
+                      label: 'Description',
+                      value: 'Not specified',
+                      isEmpty: true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+// Enhanced method to build individual payment cards with all fields
 Widget _buildPaymentCard(Map<String, dynamic> payment) {
   final amount = double.tryParse(payment['amount']?.toString() ?? '0') ?? 0;
   final formattedAmount = NumberFormat('#,##0.00').format(amount);
@@ -708,225 +874,244 @@ IconData _getPaymentModeIcon(String payMode) {
   }
 }
  
-  // 6. Visual Balance Summary with Progress Indicator - Added dropdown here
-  Widget buildTotals() {
-    double totalPaid = payments.fold(0, (sum, item) {
-      final amount = double.tryParse(item['amount']?.toString() ?? '0') ?? 0;
-      return sum + amount;
-    });
+// Update the buildTotals method to handle fee summary data with updated dropdown:
+// Update the buildTotals method to display fee summary data without calculations:
+Widget buildTotals() {
+  double totalPaid = 0;
+  double totalRequired = 0;
+  double balance = 0;
+  double termRequired = 0;
+  double termPaid = 0;
+  
+  // Get fee summary data directly from Firestore - NO CALCULATIONS
+  if (payments.isNotEmpty) {
+    final feeSummary = payments.first; // Assuming first item is fee summary
     
-    double totalRequired = double.tryParse(selectedStudent?['totalRequired']?.toString() ?? '0') ?? 0;
-    double balance = totalRequired - totalPaid;
-    
-    // Calculate payment percentage
-    double paymentPercentage = totalRequired > 0 ? (totalPaid / totalRequired) * 100 : 0;
-    if (paymentPercentage > 100) paymentPercentage = 100;
-    
-    // Format currency
-    final currencyFormat = NumberFormat('#,##0.00');
-    
-    return Card(
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      shadowColor: primaryColor.withOpacity(0.2),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            colors: [Colors.white, backgroundColor.withOpacity(0.5)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+    if (_selectedTimeFilter == 'yearly') {
+      // Pull total fields directly
+      totalRequired = (feeSummary['totalRequired'] as num?)?.toDouble() ?? 0;
+      totalPaid = (feeSummary['totalPaid'] as num?)?.toDouble() ?? 0;
+      balance = (feeSummary['totalBalance'] as num?)?.toDouble() ?? 0;
+    } else if (_selectedTimeFilter == 'current_term') {
+      // Pull term fields directly  
+      totalRequired = (feeSummary['termRequired'] as num?)?.toDouble() ?? 0;
+      totalPaid = (feeSummary['termPaid'] as num?)?.toDouble() ?? 0;
+      balance = (feeSummary['termBalance'] as num?)?.toDouble() ?? 0;
+    }
+  }
+  
+  // Calculate payment percentage for progress bar ONLY
+  double paymentPercentage = totalRequired > 0 ? (totalPaid / totalRequired) * 100 : 0;
+  if (paymentPercentage > 100) paymentPercentage = 100;
+  
+  // Format currency
+  final currencyFormat = NumberFormat('#,##0.00');
+  
+  return Card(
+    elevation: 6,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    shadowColor: primaryColor.withOpacity(0.2),
+    child: Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [Colors.white, backgroundColor.withOpacity(0.5)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.summarize, color: primaryColor, size: 24),
-                      SizedBox(width: 12),
-                      Text(
-                        'Fees Summary',
-                        style: TextStyle(
-                          fontSize: 18, 
-                          fontWeight: FontWeight.bold,
-                          color: primaryColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                  // Moved dropdown from Payment History to here
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: primaryColor, width: 1.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: primaryColor.withOpacity(0.1),
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedTimeFilter,
-                        icon: Icon(Icons.arrow_drop_down, color: primaryColor),
-                        items: [
-                          DropdownMenuItem(value: 'termly', child: Text('Termly', style: TextStyle(fontWeight: FontWeight.w500))),
-                          DropdownMenuItem(value: 'yearly', child: Text('Yearly', style: TextStyle(fontWeight: FontWeight.w500))),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedTimeFilter = value;
-                            _filterPayments();
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 20),
-              // Progress indicator
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Payment Progress',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: Colors.grey[700],
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        '${paymentPercentage.toStringAsFixed(1)}%',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: _getColorForPercentage(paymentPercentage),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 10),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: paymentPercentage / 100,
-                      backgroundColor: Colors.grey[200],
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        _getColorForPercentage(paymentPercentage),
-                      ),
-                      minHeight: 12,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 24),
-              // Summary details with enhanced styling
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: primaryColor.withOpacity(0.2)),
-                ),
-                child: Column(
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
                   children: [
-                    FinanceSummaryItem(
-                      icon: Icons.receipt_long,
-                      label: 'Total Required',
-                      value: currencyFormat.format(totalRequired),
-                      valueColor: Colors.black87,
-                    ),
-                    Divider(color: primaryColor.withOpacity(0.3)),
-                    FinanceSummaryItem(
-                      icon: Icons.payments,
-                      label: 'Total Paid',
-                      value: currencyFormat.format(totalPaid),
-                      valueColor: Colors.green[700]!,
-                    ),
-                    Divider(color: primaryColor.withOpacity(0.3)),
-                    FinanceSummaryItem(
-                      icon: Icons.account_balance_wallet,
-                      label: 'Balance',
-                      value: currencyFormat.format(balance),
-                      valueColor: balance > 0 ? Colors.red[700]! : Colors.green[700]!,
-                      isBold: true,
+                    Icon(Icons.summarize, color: primaryColor, size: 24),
+                    SizedBox(width: 12),
+                    Text(
+                      'Fees Summary',
+                      style: TextStyle(
+                        fontSize: 18, 
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
                     ),
                   ],
                 ),
+                // Updated dropdown with only Current Term and Yearly
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: primaryColor, width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primaryColor.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedTimeFilter,
+                      icon: Icon(Icons.arrow_drop_down, color: primaryColor),
+                      items: [
+                        DropdownMenuItem(value: 'current_term', child: Text('Current Term', style: TextStyle(fontWeight: FontWeight.w500))),
+                        DropdownMenuItem(value: 'yearly', child: Text('Yearly', style: TextStyle(fontWeight: FontWeight.w500))),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedTimeFilter = value;
+                          // No need to call _filterPayments() since we're not filtering
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
+            // Progress indicator
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Payment Progress',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      '${paymentPercentage.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: _getColorForPercentage(paymentPercentage),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    value: paymentPercentage / 100,
+                    backgroundColor: Colors.grey[200],
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _getColorForPercentage(paymentPercentage),
+                    ),
+                    minHeight: 12,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 24),
+            // Summary details with enhanced styling
+            Container(
+              padding: EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: primaryColor.withOpacity(0.2)),
               ),
-            ],
-          ),
+              child: Column(
+                children: [
+                  FinanceSummaryItem(
+                    icon: Icons.receipt_long,
+                    label: _selectedTimeFilter == 'yearly' ? 'Total Required' : 'Term Required',
+                    value: currencyFormat.format(totalRequired),
+                    valueColor: Colors.black87,
+                  ),
+                  Divider(color: primaryColor.withOpacity(0.3)),
+                  FinanceSummaryItem(
+                    icon: Icons.payments,
+                    label: _selectedTimeFilter == 'yearly' ? 'Total Paid' : 'Term Paid',
+                    value: currencyFormat.format(totalPaid),
+                    valueColor: Colors.green[700]!,
+                  ),
+                  Divider(color: primaryColor.withOpacity(0.3)),
+                  FinanceSummaryItem(
+                    icon: Icons.account_balance_wallet,
+                    label: 'Balance',
+                    value: currencyFormat.format(balance),
+                    valueColor: balance > 0 ? Colors.red[700]! : Colors.green[700]!,
+                    isBold: true,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-    );
-  }
-  
-  // Helper for buildTotals
-  Color _getColorForPercentage(double percentage) {
-    if (percentage >= 100) return Colors.green[700]!;
-    if (percentage >= 75) return Colors.green[600]!;
-    if (percentage >= 50) return Colors.orange;
-    if (percentage >= 25) return Colors.orange[700]!;
-    return Colors.red[700]!;
-  }
-  
-  // 7. Finance Summary Item with Icons - Enhanced
-  Widget FinanceSummaryItem({
-    required IconData icon, 
-    required String label, 
-    required String value, 
-    required Color valueColor,
-    bool isBold = false,
-  }) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 20, color: primaryColor),
+    ),
+  );
+}
+
+// Remove or update the _getCurrentTermRequiredAmount method since we're not calculating anymore
+// You can remove this method entirely or keep it for other purposes
+
+// Helper for buildTotals (keep as is)
+Color _getColorForPercentage(double percentage) {
+  if (percentage >= 100) return Colors.green[700]!;
+  if (percentage >= 75) return Colors.green[600]!;
+  if (percentage >= 50) return Colors.orange;
+  if (percentage >= 25) return Colors.orange[700]!;
+  return Colors.red[700]!;
+}
+
+// Finance Summary Item with Icons - Enhanced (keep as is)
+Widget FinanceSummaryItem({
+  required IconData icon, 
+  required String label, 
+  required String value, 
+  required Color valueColor,
+  bool isBold = false,
+}) {
+  return Padding(
+    padding: EdgeInsets.symmetric(vertical: 10),
+    child: Row(
+      children: [
+        Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: primaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
           ),
-          SizedBox(width: 16),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 15,
-              color: Colors.grey[700],
-              fontWeight: FontWeight.w600,
-            ),
+          child: Icon(icon, size: 20, color: primaryColor),
+        ),
+        SizedBox(width: 16),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 15,
+            color: Colors.grey[700],
+            fontWeight: FontWeight.w600,
           ),
-          Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
-              color: valueColor,
-            ),
+        ),
+        Spacer(),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+            color: valueColor,
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
   
   // 8. Modern Signature Section - Enhanced
   Widget buildSignature() {
@@ -1067,13 +1252,54 @@ IconData _getPaymentModeIcon(String payMode) {
     final font = await PdfGoogleFonts.nunitoRegular();
     final fontBold = await PdfGoogleFonts.nunitoBold();
     
-    double totalPaid = payments.fold(0, (sum, item) {
-      final amount = double.tryParse(item['amount']?.toString() ?? '0') ?? 0;
-      return sum + amount;
-    });
+    double totalPaid = 0;
+    double totalRequired = 0;
+    double balance = 0;
     
-    double totalRequired = double.tryParse(selectedStudent?['totalRequired']?.toString() ?? '0') ?? 0;
-    double balance = totalRequired - totalPaid;
+    if (_selectedTimeFilter == 'yearly' && payments.isNotEmpty) {
+      // For yearly view, use fee summary data
+      final feeSummary = payments.first;
+      totalRequired = (feeSummary['totalRequired'] as num?)?.toDouble() ?? 0;
+      totalPaid = (feeSummary['totalPaid'] as num?)?.toDouble() ?? 0;
+      balance = (feeSummary['totalBalance'] as num?)?.toDouble() ?? 0;
+    } else if (_selectedTimeFilter != 'yearly') {
+      // For term views, calculate from payment history
+      totalPaid = payments.fold(0, (sum, item) {
+        final amount = double.tryParse(item['amount']?.toString() ?? '0') ?? 0;
+        return sum + amount;
+      });
+      
+      // Get term-specific required amount from fee summary
+      double t1Required = 0;
+      double t2Required = 0;
+      double t3Required = 0;
+      
+      if (selectedStudentId != null) {
+        final feeSummaryQuery = await FirebaseFirestore.instance
+          .collection('schools').doc(widget.schoolCode)
+          .collection('payments')
+          .where('studentId', isEqualTo: selectedStudentId!)
+          .where('type', isEqualTo: 'fee summary')
+          .get();
+        
+        if (feeSummaryQuery.docs.isNotEmpty) {
+          final feeSummary = feeSummaryQuery.docs.first.data();
+          t1Required = (feeSummary['t1Required'] as num?)?.toDouble() ?? 0;
+          t2Required = (feeSummary['t2Required'] as num?)?.toDouble() ?? 0;
+          t3Required = (feeSummary['t3Required'] as num?)?.toDouble() ?? 0;
+        }
+        
+        if (_selectedTimeFilter == 'term3') {
+          totalRequired = t3Required;
+        } else if (_selectedTimeFilter == 'term1') {
+          totalRequired = t1Required;
+        } else if (_selectedTimeFilter == 'term2') {
+          totalRequired = t2Required;
+        }
+        
+        balance = totalRequired - totalPaid;
+      }
+    }
     
     pdf.addPage(
       pw.Page(

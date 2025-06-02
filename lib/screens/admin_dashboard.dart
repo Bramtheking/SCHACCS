@@ -10,6 +10,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:schaccs/screens/login_screen.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' hide Border;
 
 class AdminDashboard extends StatefulWidget {
   static const routeName = '/admin';
@@ -39,6 +41,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    // ignore: deprecated_member_use
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
@@ -64,7 +67,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             _HomeView(schoolCode: widget.schoolCode),
             _StudentsView(schoolCode: widget.schoolCode),
             _ParentsView(schoolCode: widget.schoolCode),
-            _PaymentsView(schoolCode: widget.schoolCode),
+            PaymentsView(schoolCode: widget.schoolCode),
             _ReportsView(schoolCode: widget.schoolCode),
             _SettingsView(
               schoolCode: widget.schoolCode,
@@ -112,6 +115,13 @@ class _HomeView extends StatelessWidget {
           ),
           SizedBox(height: 16),
           _StatsGrid(schoolCode: schoolCode),
+          SizedBox(height: 24),
+          Text('Excel Data Import',
+            style: theme.textTheme.headlineSmall
+              ?.copyWith(color: Color(0xFFB45309), fontWeight: FontWeight.bold)
+          ),
+          SizedBox(height: 16),
+          Expanded(child: _ExcelImportCards(schoolCode: schoolCode)),
         ]),
       ),
     );
@@ -190,51 +200,1292 @@ class _StatCard extends StatelessWidget {
   const _StatCard({
     required this.icon, required this.label, required this.stream,
   });
+@override
+Widget build(BuildContext context) {
+  final theme = Theme.of(context);
+  return Card(
+    elevation: 4,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, Color(0xFFFEF3C7)], // Amber 100
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: EdgeInsets.all(12),
+      child: StreamBuilder<String>(
+        stream: stream,
+        builder: (ctx, snap) {
+          return Row(children: [
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Color(0xFFFBBF24).withOpacity(0.2), // Amber 400 with opacity
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 28, color: Color(0xFFB45309)), // Amber 700
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.brown[700]
+                  )),
+                  Flexible(
+                    child: Text(snap.data ?? '…',
+                      style: theme.textTheme.headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                  ),
+                ],
+              )
+            )
+          ]);
+        },
+      ),
+    ),
+  );
+}
+}
+
+class _ExcelImportCards extends StatelessWidget {
+  final String schoolCode;
+  const _ExcelImportCards({required this.schoolCode});
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _ExcelImportCard(
+                title: 'Student Data',
+                subtitle: 'Import student details from Excel',
+                icon: Icons.people,
+                color: Colors.blue,
+                onTap: () => _importStudentData(context),
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: _ExcelImportCard(
+                title: 'Payment History',
+                subtitle: 'Import payment records from Excel',
+                icon: Icons.payment,
+                color: Colors.green,
+                onTap: () => _importPaymentHistory(context),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 12),
+        _ExcelImportCard(
+          title: 'Fee Summary',
+          subtitle: 'Import fee summary data from Excel',
+          icon: Icons.summarize,
+          color: Colors.orange,
+          onTap: () => _importFeeSummary(context),
+        ),
+      ],
+    );
+  }
+
+  void _importStudentData(BuildContext context) async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result != null) {
+        final bytes = result.files.first.bytes!;
+        final excel = Excel.decodeBytes(bytes);
+        
+        for (var table in excel.tables.keys) {
+          final sheet = excel.tables[table]!;
+          
+          // Start from row 0 since there are no headers
+          for (int i = 0; i < sheet.maxRows; i++) {
+            final row = sheet.rows[i];
+            if (row.length >= 4) {
+              // Column mapping: ADM NO, NAME, CLASS, PHONE NUMBER
+              final admNo = row[0]?.value?.toString().trim();
+              final name = row[1]?.value?.toString().trim();
+              final studentClass = row[2]?.value?.toString().trim();
+              final phoneNumber = row[3]?.value?.toString().trim();
+
+              if (admNo != null && admNo.isNotEmpty) {
+                await _processStudentData(admNo, name, studentClass, phoneNumber);
+              }
+            }
+          }
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Student data imported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error importing student data: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _processStudentData(String admNo, String? name, String? studentClass, String? phoneNumber) async {
+    final studentsRef = FirebaseFirestore.instance
+      .collection('schools').doc(schoolCode)
+      .collection('students');
+
+    // Check if student exists
+    final existingStudent = await studentsRef
+      .where('admissionNo', isEqualTo: admNo)
+      .get();
+
+    final studentData = {
+      'name': name ?? '',
+      'class': studentClass ?? '',
+      'parentPhone': phoneNumber ?? '',
+      'admissionNo': admNo,
+    };
+
+    if (existingStudent.docs.isNotEmpty) {
+      // Update existing student
+      await existingStudent.docs.first.reference.update({
+        ...studentData,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Create new student
+      await studentsRef.add({
+        ...studentData,
+        'age': 0,
+        'city': '',
+        'homeAddress': '',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  void _importPaymentHistory(BuildContext context) async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result != null) {
+        final bytes = result.files.first.bytes!;
+        final excel = Excel.decodeBytes(bytes);
+        
+        for (var table in excel.tables.keys) {
+          final sheet = excel.tables[table]!;
+          
+          // Start from row 0 since there are no headers
+          for (int i = 0; i < sheet.maxRows; i++) {
+            final row = sheet.rows[i];
+            if (row.length >= 8) {
+              // Column mapping: ADM, NAME, CLASS, DATE, RCTNO, TOTAL, PAYMODE, TRNO
+              final admNo = row[0]?.value?.toString().trim();
+              final name = row[1]?.value?.toString().trim();
+              final studentClass = row[2]?.value?.toString().trim();
+              final dateStr = row[3]?.value?.toString().trim();
+              final receiptNo = row[4]?.value?.toString().trim();
+              final total = row[5]?.value?.toString().trim();
+              final paymentMode = row[6]?.value?.toString().trim();
+              final transactionNo = row[7]?.value?.toString().trim();
+
+              if (admNo != null && admNo.isNotEmpty) {
+                await _processPaymentHistory(admNo, name, studentClass, dateStr, receiptNo, total, paymentMode, transactionNo);
+              }
+            }
+          }
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Payment history imported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error importing payment history: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _processPaymentHistory(String admNo, String? name, String? studentClass, String? dateStr, String? receiptNo, String? total, String? paymentMode, String? transactionNo) async {
+    // Verify student exists and matches
+    final studentsRef = FirebaseFirestore.instance
+      .collection('schools').doc(schoolCode)
+      .collection('students');
+
+    final studentQuery = await studentsRef
+      .where('admissionNo', isEqualTo: admNo)
+      .get();
+
+    if (studentQuery.docs.isEmpty) {
+      return; // Skip if student doesn't exist
+    }
+
+    final student = studentQuery.docs.first;
+    final studentData = student.data();
+
+    // Verify name and class match (case insensitive)
+    if (name != null && studentData['name']?.toString().toLowerCase() != name.toLowerCase()) {
+      return; // Skip if name doesn't match
+    }
+    if (studentClass != null && studentData['class']?.toString().toLowerCase() != studentClass.toLowerCase()) {
+      return; // Skip if class doesn't match
+    }
+
+    // Parse date (DD-MM-YY format)
+    DateTime? paymentDate;
+    if (dateStr != null) {
+      try {
+        final parts = dateStr.split('-');
+        if (parts.length == 3) {
+          final day = int.parse(parts[0]);
+          final month = int.parse(parts[1]);
+          final year = int.parse(parts[2]) + 2000; // Assuming 20XX
+          paymentDate = DateTime(year, month, day);
+        }
+      } catch (e) {
+        paymentDate = DateTime.now();
+      }
+    } else {
+      paymentDate = DateTime.now();
+    }
+
+    // Create unique document ID
+    String baseDocId = '$admNo-payment history';
+    String docId = await getUniqueDocId(schoolCode, 'payments', baseDocId);
+
+    // Create payment record
+    await FirebaseFirestore.instance
+      .collection('schools').doc(schoolCode)
+      .collection('payments')
+      .doc(docId)
+      .set({
+        'admissionNo': admNo,
+        'studentId': student.id,
+        'amount': double.tryParse(total ?? '0') ?? 0,
+        'mode': paymentMode ?? '',
+        'receiptNumber': receiptNo ?? '',
+        'transactionNumber': transactionNo ?? '',
+        'date': Timestamp.fromDate(paymentDate!),
+        'type': 'payment history',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+  }
+
+  void _importFeeSummary(BuildContext context) async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+
+      if (result != null) {
+        final bytes = result.files.first.bytes!;
+        final excel = Excel.decodeBytes(bytes);
+        
+        for (var table in excel.tables.keys) {
+          final sheet = excel.tables[table]!;
+          
+          // Start from row 0 since there are no headers
+          for (int i = 0; i < sheet.maxRows; i++) {
+            final row = sheet.rows[i];
+            if (row.length >= 8) { // Updated minimum columns needed
+              // Column mapping: ADM, NAME, CLASS, TRQD, TRPAID, TOTALRQ, TOTALPAID, TOTALBAL
+              final admNo = row[0]?.value?.toString().trim();
+              final name = row[1]?.value?.toString().trim();
+              final studentClass = row[2]?.value?.toString().trim();
+              
+              if (admNo != null && admNo.isNotEmpty) {
+                await _processFeeSummary(admNo, name, studentClass, row);
+              }
+            }
+          }
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fee summary imported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error importing fee summary: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _processFeeSummary(String admNo, String? name, String? studentClass, List<Data?> row) async {
+    // Verify student exists and matches
+    final studentsRef = FirebaseFirestore.instance
+      .collection('schools').doc(schoolCode)
+      .collection('students');
+
+    final studentQuery = await studentsRef
+      .where('admissionNo', isEqualTo: admNo)
+      .get();
+
+    if (studentQuery.docs.isEmpty) {
+      return; // Skip if student doesn't exist
+    }
+
+    final student = studentQuery.docs.first;
+    final studentData = student.data();
+
+    // Verify name and class match
+    if (name != null && studentData['name']?.toString().toLowerCase() != name.toLowerCase()) {
+      return;
+    }
+    if (studentClass != null && studentData['class']?.toString().toLowerCase() != studentClass.toLowerCase()) {
+      return;
+    }
+
+    // Extract fee data from row - Updated column mapping
+    // ADM, NAME, CLASS, TRQD, TRPAID, TOTALRQ, TOTALPAID, TOTALBAL
+    final feeSummaryData = {
+      'admissionNo': admNo,
+      'studentId': student.id,
+      'name': name ?? '',
+      'class': studentClass ?? '',
+      'termRequired': double.tryParse(row[3]?.value?.toString() ?? '0') ?? 0, // TRQD
+      'termPaid': double.tryParse(row[4]?.value?.toString() ?? '0') ?? 0, // TRPAID
+      'totalRequired': double.tryParse(row[5]?.value?.toString() ?? '0') ?? 0, // TOTALRQ
+      'totalPaid': double.tryParse(row[6]?.value?.toString() ?? '0') ?? 0, // TOTALPAID
+      'totalBalance': double.tryParse(row[7]?.value?.toString() ?? '0') ?? 0, // TOTALBAL
+      'type': 'fee summary',
+    };
+
+    // Check if fee summary already exists for this student
+    final existingFeeSummary = await FirebaseFirestore.instance
+      .collection('schools').doc(schoolCode)
+      .collection('payments')
+      .where('admissionNo', isEqualTo: admNo)
+      .where('type', isEqualTo: 'fee summary')
+      .get();
+
+    if (existingFeeSummary.docs.isNotEmpty) {
+      // Update existing fee summary
+      await existingFeeSummary.docs.first.reference.update({
+        ...feeSummaryData,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Create new fee summary with unique doc ID
+      String baseDocId = '$admNo-fee summary';
+      String docId = await getUniqueDocId(schoolCode, 'payments', baseDocId);
+      
+      await FirebaseFirestore.instance
+        .collection('schools').doc(schoolCode)
+        .collection('payments')
+        .doc(docId)
+        .set({
+          ...feeSummaryData,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+    }
+  }
+}
+
+class _ExcelImportCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ExcelImportCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, Color(0xFFFEF3C7)], // Amber 100
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              colors: [Colors.white, color.withOpacity(0.1)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
-          borderRadius: BorderRadius.circular(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  Spacer(),
+                  Icon(Icons.upload_file, color: color),
+                ],
+              ),
+              SizedBox(height: 12),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
         ),
-        padding: EdgeInsets.all(12),
-        child: StreamBuilder<String>(
-          stream: stream,
-          builder: (ctx, snap) {
-            return Row(children: [
-              Container(
- padding: EdgeInsets.all(8),
- decoration: BoxDecoration(
- color: Color(0xFFFBBF24).withOpacity(0.2), // Amber 400 with opacity
- borderRadius: BorderRadius.circular(8),
- ),
- child: Icon(icon, size: 28, color: Color(0xFFB45309)), // Amber 700
- ),
- SizedBox(width: 12),
- Expanded(
- child: Column(
- crossAxisAlignment: CrossAxisAlignment.start,
- children: [
- Text(label, style: theme.textTheme.bodyMedium?.copyWith(
- color: Colors.brown[700]
- )),
- Text(snap.data ?? '…',
- style: theme.textTheme.headlineSmall
- ?.copyWith(fontWeight: FontWeight.bold, color: Color(0xFF92400E))), // Amber 800
- ],
- )
-              )
-            ]);
-          },
+      ),
+    );
+  }
+}
+
+// ───────── PAYMENTS VIEW WITH TABS ─────────
+class PaymentsView extends StatefulWidget {
+  final String schoolCode;
+  const PaymentsView({Key? key, required this.schoolCode}) : super(key: key);
+
+  @override
+  PaymentsViewState createState() => PaymentsViewState();
+}
+
+class PaymentsViewState extends State<PaymentsView> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFFFF7ED),
+      child: Column(
+        children: [
+          Container(
+            color: Colors.white,
+            child: TabBar(
+              controller: _tabController,
+              labelColor: const Color(0xFFB45309),
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: const Color(0xFFB45309),
+              tabs: const [
+                Tab(text: 'Payment History'),
+                Tab(text: 'Fee Summary'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                PaymentHistoryTab(schoolCode: widget.schoolCode),
+                FeeSummaryTab(schoolCode: widget.schoolCode),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PaymentHistoryTab extends StatelessWidget {
+  final String schoolCode;
+  const PaymentHistoryTab({Key? key, required this.schoolCode}) : super(key: key);
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    floatingActionButton: FloatingActionButton(
+      backgroundColor: const Color(0xFFB45309),
+      onPressed: () => _showPaymentHistoryForm(context, null, schoolCode),
+      child: const Icon(Icons.add, color: Colors.white),
+    ),
+    body: Container(
+      color: const Color(0xFFFFF7ED),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'Payment History',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFFB45309),
+              ),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection('schools')
+                  .doc(schoolCode)
+                  .collection('payments')
+                  .where('type', isEqualTo: 'payment history')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator(color: Color(0xFFB45309)));
+                }
+
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return Center(child: Text('No payment history available.'));
+                }
+
+                return ListView.builder(
+                  padding: EdgeInsets.only(bottom: 80),
+                  itemCount: snapshot.data!.docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = snapshot.data!.docs[index];
+                    final d = doc.data() as Map<String, dynamic>;
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      child: ListTile(
+                        title: Text(
+                          'KES ${(d['amount'] as num).toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF92400E),
+                          ),
+                        ),
+                        subtitle: Text(
+                            '${d['mode'] ?? 'N/A'} • ${DateFormat('dd MMM yyyy').format((d['date'] as Timestamp).toDate())} • Adm#: ${d['admissionNo']}\nRct: ${d['receiptNumber'] ?? 'N/A'} • Trn: ${d['transactionNumber'] ?? 'N/A'}'),
+                        trailing: const Icon(Icons.edit, color: Color(0xFFB45309)),
+                        onTap: () => _showPaymentHistoryForm(context, doc, schoolCode),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+ void _showPaymentHistoryForm(BuildContext ctx, QueryDocumentSnapshot? doc, String code) async {
+  final isEdit = doc != null;
+  final data = isEdit ? doc.data()! as Map<String, dynamic> : <String, dynamic>{};
+  final amountCtl = TextEditingController(text: data['amount']?.toString());
+  final modeCtl = TextEditingController(text: data['mode'] as String?);
+  final receiptCtl = TextEditingController(text: data['receiptNumber'] as String?);
+  final transactionCtl = TextEditingController(text: data['transactionNumber'] as String?);
+  DateTime date = data['date'] != null ? (data['date'] as Timestamp).toDate() : DateTime.now();
+
+  final studentSnap = await FirebaseFirestore.instance
+      .collection('schools')
+      .doc(code)
+      .collection('students')
+      .orderBy('admissionNo')
+      .get();
+  final studentDocs = studentSnap.docs;
+
+  if (studentDocs.isEmpty) {
+    ScaffoldMessenger.of(ctx).showSnackBar(
+        const SnackBar(content: Text('No students found. Please add students first.')));
+    return;
+  }
+
+  showModalBottomSheet(
+    context: ctx,
+    isScrollControlled: true,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (_) => PaymentHistoryFormContent(
+      ctx: ctx,
+      doc: doc,
+      code: code,
+      isEdit: isEdit,
+      data: data,
+      amountCtl: amountCtl,
+      modeCtl: modeCtl,
+      receiptCtl: receiptCtl,
+      transactionCtl: transactionCtl,
+      date: date,
+      studentDocs: studentDocs,
+    ),
+  );
+}
+}
+
+class PaymentHistoryFormContent extends StatefulWidget {
+  final BuildContext ctx;
+  final QueryDocumentSnapshot? doc;
+  final String code;
+  final bool isEdit;
+  final Map<String, dynamic> data;
+  final TextEditingController amountCtl;
+  final TextEditingController modeCtl;
+  final TextEditingController receiptCtl;
+  final TextEditingController transactionCtl;
+  final DateTime date;
+  final List<QueryDocumentSnapshot> studentDocs;
+
+  const PaymentHistoryFormContent({
+    Key? key,
+    required this.ctx,
+    required this.doc,
+    required this.code,
+    required this.isEdit,
+    required this.data,
+    required this.amountCtl,
+    required this.modeCtl,
+    required this.receiptCtl,
+    required this.transactionCtl,
+    required this.date,
+    required this.studentDocs,
+  }) : super(key: key);
+
+  @override
+  PaymentHistoryFormContentState createState() => PaymentHistoryFormContentState();
+}
+
+class PaymentHistoryFormContentState extends State<PaymentHistoryFormContent> {
+  String? selectedAdmissionNo;
+  late DateTime selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedAdmissionNo = widget.isEdit ? widget.data['admissionNo'] as String? : null;
+    selectedDate = widget.date;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(widget.ctx).viewInsets.bottom,
+          left: 16,
+          right: 16,
+          top: 24),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            widget.isEdit ? 'Edit Payment History' : 'Add Payment History',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFB45309),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ModernField(
+            controller: widget.amountCtl,
+            label: 'Amount',
+            keyboard: TextInputType.number,
+          ),
+          ModernField(
+            controller: widget.modeCtl,
+            label: 'Payment Mode',
+          ),
+          ModernField(
+            controller: widget.receiptCtl,
+            label: 'Receipt Number',
+          ),
+          ModernField(
+            controller: widget.transactionCtl,
+            label: 'Transaction Number',
+          ),
+          // Student dropdown
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: DropdownButtonFormField<String>(
+              value: selectedAdmissionNo,
+              hint: Text('Select Student', style: TextStyle(color: Colors.grey[600])),
+              decoration: const InputDecoration(
+                labelText: 'Student (Adm#)',
+                labelStyle: TextStyle(color: Color(0xFF92400E)),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                filled: true,
+                fillColor: Color(0xFFFFF7ED),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                    borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                  borderSide: BorderSide(color: Color(0xFFB45309), width: 2),
+                ),
+              ),
+              items: widget.studentDocs.map((s) {
+                final sd = s.data() as Map<String, dynamic>;
+                final adm = sd['admissionNo'] as String;
+                return DropdownMenuItem<String>(
+                  value: adm,
+                  child: Text('$adm – ${sd['name']}'),
+                );
+              }).toList(),
+              onChanged: (newAdm) {
+                setState(() => selectedAdmissionNo = newAdm);
+              },
+              dropdownColor: Colors.white,
+            ),
+          ),
+          // Date picker
+          Card(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            color: const Color(0xFFFFF7ED),
+            child: ListTile(
+              title: Text(
+                'Date: ${DateFormat('dd MMM yyyy').format(selectedDate)}',
+                style: const TextStyle(color: Color(0xFF92400E)),
+              ),
+              trailing: const Icon(Icons.calendar_today, color: Color(0xFFB45309)),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: widget.ctx,
+                  initialDate: selectedDate,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now(),
+                  builder: (ctx, child) => Theme(
+                    data: Theme.of(ctx).copyWith(
+                      colorScheme: const ColorScheme.light(
+                        primary: Color(0xFFB45309),
+                        onPrimary: Colors.white,
+                        surface: Colors.white,
+                        onSurface: Colors.black,
+                      ),
+                    ),
+                    child: child!,
+                  ),
+                );
+                if (picked != null) {
+                  setState(() => selectedDate = picked);
+                }
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Submit button
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: selectedAdmissionNo == null ? Colors.grey[400] : const Color(0xFFB45309),
+                shape: const StadiumBorder(),
+                minimumSize: const Size(0, 50),
+              ),
+              onPressed: selectedAdmissionNo == null
+                  ? null
+                  : () async {
+                      // Find student ID
+                      final student = widget.studentDocs.firstWhere((s) =>
+                          (s.data() as Map<String, dynamic>)['admissionNo'] == selectedAdmissionNo);
+
+                      if (widget.isEdit) {
+                        // Update existing payment
+                        await widget.doc!.reference.update({
+                          'amount': double.tryParse(widget.amountCtl.text) ?? 0,
+                          'mode': widget.modeCtl.text.trim(),
+                          'receiptNumber': widget.receiptCtl.text.trim(),
+                          'transactionNumber': widget.transactionCtl.text.trim(),
+                          'date': Timestamp.fromDate(selectedDate),
+                          'admissionNo': selectedAdmissionNo!,
+                          'studentId': student.id,
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        });
+                      } else {
+                        // Create new payment with unique doc ID
+                        String baseDocId = '$selectedAdmissionNo-payment history';
+                        String docId = await getUniqueDocId(widget.code, 'payments', baseDocId);
+
+                        await FirebaseFirestore.instance
+                            .collection('schools')
+                            .doc(widget.code)
+                            .collection('payments')
+                            .doc(docId)
+                            .set({
+                          'amount': double.tryParse(widget.amountCtl.text) ?? 0,
+                          'mode': widget.modeCtl.text.trim(),
+                          'receiptNumber': widget.receiptCtl.text.trim(),
+                          'transactionNumber': widget.transactionCtl.text.trim(),
+                          'date': Timestamp.fromDate(selectedDate),
+                          'admissionNo': selectedAdmissionNo!,
+                          'studentId': student.id,
+                          'type': 'payment history',
+                          'timestamp': FieldValue.serverTimestamp(),
+                        });
+                      }
+                      Navigator.pop(widget.ctx);
+                    },
+              child: Text(widget.isEdit ? 'Save Payment' : 'Add Payment'),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ]),
+      ),
+    );
+  }
+}
+class FeeSummaryTab extends StatelessWidget {
+  final String schoolCode;
+  const FeeSummaryTab({Key? key, required this.schoolCode}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Color(0xFFB45309),
+        onPressed: () => _showFeeSummaryForm(context, null, schoolCode),
+        child: Icon(Icons.add, color: Colors.white),
+      ),
+      body: Container(
+        color: Color(0xFFFFF7ED),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Fee Summary',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFB45309),
+                ),
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('schools')
+                    .doc(schoolCode)
+                    .collection('payments')
+                    .where('type', isEqualTo: 'fee summary')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator(color: Color(0xFFB45309)));
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return Center(child: Text('No fee summary data available.'));
+                  }
+
+                  return ListView.builder(
+                    itemCount: snapshot.data!.docs.length,
+                    itemBuilder: (context, index) {
+                      final doc = snapshot.data!.docs[index];
+                      final d = doc.data() as Map<String, dynamic>;
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        child: ListTile(
+                          title: Text(
+                            '${d['name']} (${d['admissionNo']})',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF92400E),
+                            ),
+                          ),
+                          subtitle: Text(
+                              'Class: ${d['class']}\nTerm Required: KES ${(d['termRequired'] ?? 0).toStringAsFixed(2)} • Term Paid: KES ${(d['termPaid'] ?? 0).toStringAsFixed(2)}\nTotal Required: KES ${(d['totalRequired'] ?? 0).toStringAsFixed(2)} • Total Paid: KES ${(d['totalPaid'] ?? 0).toStringAsFixed(2)} • Balance: KES ${(d['totalBalance'] ?? 0).toStringAsFixed(2)}'),
+                          trailing: const Icon(Icons.edit, color: Color(0xFFB45309)),
+                          onTap: () => _showFeeSummaryForm(context, doc, schoolCode),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  void _showFeeSummaryForm(BuildContext ctx, QueryDocumentSnapshot? doc, String code) async {
+    final isEdit = doc != null;
+    final data = isEdit ? doc.data()! as Map<String, dynamic> : <String, dynamic>{};
+
+    // Controllers for simplified fee summary fields
+    final nameCtl = TextEditingController(text: data['name'] as String?);
+    final classCtl = TextEditingController(text: data['class'] as String?);
+    final termRequiredCtl = TextEditingController(text: data['termRequired']?.toString());
+    final termPaidCtl = TextEditingController(text: data['termPaid']?.toString());
+    final totalRequiredCtl = TextEditingController(text: data['totalRequired']?.toString());
+    final totalPaidCtl = TextEditingController(text: data['totalPaid']?.toString());
+    final totalBalanceCtl = TextEditingController(text: data['totalBalance']?.toString());
+
+    final studentSnap = await FirebaseFirestore.instance
+        .collection('schools')
+        .doc(code)
+        .collection('students')
+        .orderBy('admissionNo')
+        .get();
+    final studentDocs = studentSnap.docs;
+
+    if (studentDocs.isEmpty) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+          const SnackBar(content: Text('No students found. Please add students first.')));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => FeeSummaryFormContent(
+        ctx: ctx,
+        doc: doc,
+        code: code,
+        isEdit: isEdit,
+        data: data,
+        nameCtl: nameCtl,
+        classCtl: classCtl,
+        termRequiredCtl: termRequiredCtl,
+        termPaidCtl: termPaidCtl,
+        totalRequiredCtl: totalRequiredCtl,
+        totalPaidCtl: totalPaidCtl,
+        totalBalanceCtl: totalBalanceCtl,
+        studentDocs: studentDocs,
+      ),
+    );
+  }
+}
+
+class FeeSummaryFormContent extends StatefulWidget {
+  final BuildContext ctx;
+  final QueryDocumentSnapshot? doc;
+  final String code;
+  final bool isEdit;
+  final Map<String, dynamic> data;
+  final TextEditingController nameCtl;
+  final TextEditingController classCtl;
+  final TextEditingController termRequiredCtl;
+  final TextEditingController termPaidCtl;
+  final TextEditingController totalRequiredCtl;
+  final TextEditingController totalPaidCtl;
+  final TextEditingController totalBalanceCtl;
+  final List<QueryDocumentSnapshot> studentDocs;
+
+  const FeeSummaryFormContent({
+    Key? key,
+    required this.ctx,
+    required this.doc,
+    required this.code,
+    required this.isEdit,
+    required this.data,
+    required this.nameCtl,
+    required this.classCtl,
+    required this.termRequiredCtl,
+    required this.termPaidCtl,
+    required this.totalRequiredCtl,
+    required this.totalPaidCtl,
+    required this.totalBalanceCtl,
+    required this.studentDocs,
+  }) : super(key: key);
+
+  @override
+  FeeSummaryFormContentState createState() => FeeSummaryFormContentState();
+}
+
+class FeeSummaryFormContentState extends State<FeeSummaryFormContent> {
+  String? selectedAdmissionNo;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedAdmissionNo = widget.isEdit ? widget.data['admissionNo'] as String? : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+          bottom: MediaQuery.of(widget.ctx).viewInsets.bottom,
+          left: 16,
+          right: 16,
+          top: 24),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            widget.isEdit ? 'Edit Fee Summary' : 'Add Fee Summary',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFB45309),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Student dropdown
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: DropdownButtonFormField<String>(
+              value: selectedAdmissionNo,
+              hint: Text('Select Student', style: TextStyle(color: Colors.grey[600])),
+              decoration: const InputDecoration(
+                labelText: 'Student (Adm#)',
+                labelStyle: TextStyle(color: Color(0xFF92400E)),
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                filled: true,
+                fillColor: Color(0xFFFFF7ED),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                    borderSide: BorderSide.none),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                  borderSide: BorderSide(color: Color(0xFFB45309), width: 2),
+                ),
+              ),
+              items: widget.studentDocs.map((s) {
+                final sd = s.data() as Map<String, dynamic>;
+                final adm = sd['admissionNo'] as String;
+                return DropdownMenuItem<String>(
+                  value: adm,
+                  child: Text('$adm – ${sd['name']}'),
+                );
+              }).toList(),
+              onChanged: (newAdm) {
+                setState(() => selectedAdmissionNo = newAdm);
+                // Auto-fill name and class when student is selected
+                if (newAdm != null) {
+                  final student = widget.studentDocs
+                      .firstWhere((s) => (s.data() as Map<String, dynamic>)['admissionNo'] == newAdm);
+                  final studentData = student.data() as Map<String, dynamic>;
+                  widget.nameCtl.text = studentData['name'] ?? '';
+                  widget.classCtl.text = studentData['class'] ?? '';
+                }
+              },
+              dropdownColor: Colors.white,
+            ),
+          ),
+          ModernField(controller: widget.nameCtl, label: 'Name'),
+          ModernField(controller: widget.classCtl, label: 'Class'),
+          
+          // Term Section
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Term Fees',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[700])),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                        child: ModernField(
+                            controller: widget.termRequiredCtl,
+                            label: 'Term Required',
+                            keyboard: TextInputType.number)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: ModernField(
+                            controller: widget.termPaidCtl, 
+                            label: 'Term Paid', 
+                            keyboard: TextInputType.number)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          
+          // Total Section
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFB45309).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFB45309).withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Total Summary',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFB45309))),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                        child: ModernField(
+                            controller: widget.totalRequiredCtl,
+                            label: 'Total Required',
+                            keyboard: TextInputType.number)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: ModernField(
+                            controller: widget.totalPaidCtl,
+                            label: 'Total Paid',
+                            keyboard: TextInputType.number)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ModernField(
+                    controller: widget.totalBalanceCtl,
+                    label: 'Total Balance',
+                    keyboard: TextInputType.number),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Submit button
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                foregroundColor: Colors.white,
+                backgroundColor: selectedAdmissionNo == null ? Colors.grey[400] : const Color(0xFFB45309),
+                shape: const StadiumBorder(),
+                minimumSize: const Size(0, 50),
+              ),
+              onPressed: selectedAdmissionNo == null
+                  ? null
+                  : () async {
+                      // Find student ID
+                      final student = widget.studentDocs.firstWhere((s) =>
+                          (s.data() as Map<String, dynamic>)['admissionNo'] == selectedAdmissionNo);
+
+                      final feeSummaryData = {
+                        'admissionNo': selectedAdmissionNo!,
+                        'studentId': student.id,
+                        'name': widget.nameCtl.text.trim(),
+                        'class': widget.classCtl.text.trim(),
+                        'termRequired': double.tryParse(widget.termRequiredCtl.text) ?? 0,
+                        'termPaid': double.tryParse(widget.termPaidCtl.text) ?? 0,
+                        'totalRequired': double.tryParse(widget.totalRequiredCtl.text) ?? 0,
+                        'totalPaid': double.tryParse(widget.totalPaidCtl.text) ?? 0,
+                        'totalBalance': double.tryParse(widget.totalBalanceCtl.text) ?? 0,
+                        'type': 'fee summary',
+                      };
+
+                      if (widget.isEdit) {
+                        // Update existing fee summary
+                        await widget.doc!.reference.update({
+                          ...feeSummaryData,
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        });
+                      } else {
+                        // Check if fee summary already exists for this student
+                        final existingFeeSummary = await FirebaseFirestore.instance
+                          .collection('schools').doc(widget.code)
+                          .collection('payments')
+                          .where('admissionNo', isEqualTo: selectedAdmissionNo)
+                          .where('type', isEqualTo: 'fee summary')
+                          .get();
+
+                        if (existingFeeSummary.docs.isNotEmpty) {
+                          // Update existing
+                          await existingFeeSummary.docs.first.reference.update({
+                            ...feeSummaryData,
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          });
+                        } else {
+                          // Create new with unique doc ID
+                          String baseDocId = '$selectedAdmissionNo-fee summary';
+                          String docId = await getUniqueDocId(widget.code, 'payments', baseDocId);
+                          
+                          await FirebaseFirestore.instance
+                            .collection('schools').doc(widget.code)
+                            .collection('payments')
+                            .doc(docId)
+                            .set({
+                              ...feeSummaryData,
+                              'createdAt': FieldValue.serverTimestamp(),
+                            });
+                        }
+                      }
+                      Navigator.pop(widget.ctx);
+                    },
+              child: Text(widget.isEdit ? 'Save Fee Summary' : 'Add Fee Summary'),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ]),
       ),
     );
   }
@@ -248,7 +1499,7 @@ class _StudentsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: Color(0xFFFFF7ED), // Orange 50 background
-      child: _EditableList(
+      child: EditableList(
         title: 'Students',
         collection: FirebaseFirestore.instance
           .collection('schools').doc(schoolCode)
@@ -263,7 +1514,7 @@ class _StudentsView extends StatelessWidget {
                 fontWeight: FontWeight.w500, 
                 color: Color(0xFF92400E), // Amber 800
               )),
-              subtitle: Text('Adm#: ${d['admissionNo']} • Age: ${d['age']}'),
+              subtitle: Text('Adm#: ${d['admissionNo']} • Class: ${d['class'] ?? 'N/A'} • Age: ${d['age']}'),
               trailing: Icon(Icons.edit, color: Color(0xFFB45309)), // Amber 700
               onTap: () => _showStudentForm(ctx, doc, schoolCode),
             ),
@@ -279,11 +1530,11 @@ class _StudentsView extends StatelessWidget {
     final d = isEdit ? doc.data()! as Map<String, dynamic> : <String,dynamic>{};
     final name  = TextEditingController(text: d['name']);
     final adm   = TextEditingController(text: d['admissionNo']);
+    final studentClass = TextEditingController(text: d['class']);
     final age   = TextEditingController(text: d['age']?.toString());
     final city  = TextEditingController(text: d['city']);
     final phone = TextEditingController(text: d['parentPhone']);
     final home  = TextEditingController(text: d['homeAddress']);
-    final fee   = TextEditingController(text: d['expectedFee']?.toString());
 
     showModalBottomSheet(
       context: ctx,
@@ -304,13 +1555,13 @@ class _StudentsView extends StatelessWidget {
               color: Color(0xFFB45309), // Amber 700
             )),
           SizedBox(height:16),
-          _ModernField(controller: name,  label: 'Full Name'),
-          _ModernField(controller: adm,   label: 'Admission No'),
-          _ModernField(controller: age,   label: 'Age', keyboard: TextInputType.number),
-          _ModernField(controller: city,  label: 'City'),
-          _ModernField(controller: phone, label: 'Parent Phone', keyboard: TextInputType.phone),
-          _ModernField(controller: home,  label: 'Home Address'),
-          _ModernField(controller: fee,   label: 'Expected Fee', keyboard: TextInputType.number),
+          ModernField(controller: name,  label: 'Full Name'),
+          ModernField(controller: adm,   label: 'Admission No'),
+          ModernField(controller: studentClass, label: 'Class'),
+          ModernField(controller: age,   label: 'Age', keyboard: TextInputType.number),
+          ModernField(controller: city,  label: 'City'),
+          ModernField(controller: phone, label: 'Parent Phone', keyboard: TextInputType.phone),
+          ModernField(controller: home,  label: 'Home Address'),
           SizedBox(height:24),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -325,11 +1576,11 @@ class _StudentsView extends StatelessWidget {
               final payload = {
                 'name': name.text.trim(),
                 'admissionNo': adm.text.trim(),
+                'class': studentClass.text.trim(),
                 'age': int.tryParse(age.text) ?? 0,
                 'city': city.text.trim(),
                 'parentPhone': phone.text.trim(),
                 'homeAddress': home.text.trim(),
-                'expectedFee': double.tryParse(fee.text) ?? 0,
                 'createdAt': FieldValue.serverTimestamp(),
               };
               if (isEdit) {
@@ -346,6 +1597,7 @@ class _StudentsView extends StatelessWidget {
     );
   }
 }
+
 // ───────── PARENTS ─────────
 class _ParentsView extends StatelessWidget {
   final String schoolCode;
@@ -355,7 +1607,7 @@ class _ParentsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: Color(0xFFFFF7ED), // Orange 50 background
-      child: _EditableList(
+      child: EditableList(
         title: 'Parents',
         collection: FirebaseFirestore.instance
           .collection('schools').doc(schoolCode)
@@ -370,7 +1622,7 @@ class _ParentsView extends StatelessWidget {
                 fontWeight: FontWeight.w500, 
                 color: Color(0xFF92400E), // Amber 800
               )),
-              subtitle: Text('Email: ${d['email']} • City: ${d['city']}'),
+              subtitle: Text('Email: ${d['email']} • City: ${d['city']}\nAdmission No: ${d['admissionNo'] ?? 'N/A'}'),
               trailing: Icon(Icons.edit, color: Color(0xFFB45309)), // Amber 700
               onTap: () => _showParentForm(ctx, doc, schoolCode),
             ),
@@ -464,12 +1716,41 @@ class _ParentFormContent extends StatefulWidget {
 }
 
 class _ParentFormContentState extends State<_ParentFormContent> {
-  String? selectedStudentId;
+  String? selectedStudentId; // Only for UI selection
+  String? selectedAdmissionNo;
 
   @override
   void initState() {
     super.initState();
-    selectedStudentId = widget.isEdit ? widget.data['studentId'] as String? : null;
+    if (widget.isEdit) {
+      selectedAdmissionNo = widget.data['admissionNo'] as String?;
+      // Find the student ID for UI selection based on admission number
+      if (selectedAdmissionNo != null) {
+        final student = widget.studentDocs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['admissionNo'] == selectedAdmissionNo;
+        }).firstOrNull;
+        selectedStudentId = student?.id;
+      }
+    }
+  }
+
+  void _onStudentChanged(String? studentId) {
+    if (studentId != null) {
+      // Find the selected student document
+      final selectedStudent = widget.studentDocs.firstWhere((doc) => doc.id == studentId);
+      final studentData = selectedStudent.data() as Map<String, dynamic>;
+      
+      setState(() {
+        selectedStudentId = studentId;
+        selectedAdmissionNo = studentData['admissionNo'] as String?;
+      });
+    } else {
+      setState(() {
+        selectedStudentId = null;
+        selectedAdmissionNo = null;
+      });
+    }
   }
 
   @override
@@ -491,10 +1772,10 @@ class _ParentFormContentState extends State<_ParentFormContent> {
           ),
           SizedBox(height: 16),
 
-          _ModernField(controller: widget.nameCtl, label: 'Full Name'),
-          _ModernField(controller: widget.emailCtl, label: 'Email', keyboard: TextInputType.emailAddress),
-          _ModernField(controller: widget.cityCtl, label: 'City'),
-          _ModernField(controller: widget.phoneCtl, label: 'Phone', keyboard: TextInputType.phone),
+          ModernField(controller: widget.nameCtl, label: 'Full Name'),
+          ModernField(controller: widget.emailCtl, label: 'Email', keyboard: TextInputType.emailAddress),
+          ModernField(controller: widget.cityCtl, label: 'City'),
+          ModernField(controller: widget.phoneCtl, label: 'Phone', keyboard: TextInputType.phone),
 
           // Password field
           Padding(
@@ -552,14 +1833,37 @@ class _ParentFormContentState extends State<_ParentFormContent> {
                   child: Text('${sd['admissionNo']} - ${sd['name']}'),
                 );
               }).toList(),
-              onChanged: (String? newValue) {
-                setState(() {
-                  selectedStudentId = newValue;
-                });
-              },
+              onChanged: _onStudentChanged,
               dropdownColor: Colors.white,
             ),
           ),
+
+          // Display selected admission number
+          if (selectedAdmissionNo != null)
+            Container(
+              margin: EdgeInsets.symmetric(vertical: 8),
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Color(0xFFFEF3C7), // Light amber background
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Color(0xFFB45309).withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Color(0xFFB45309), size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Selected Admission No: $selectedAdmissionNo',
+                      style: TextStyle(
+                        color: Color(0xFF92400E),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           SizedBox(height: 24),
 
@@ -585,7 +1889,7 @@ class _ParentFormContentState extends State<_ParentFormContent> {
                   'email': widget.emailCtl.text.trim(),
                   'city': widget.cityCtl.text.trim(),
                   'phone': widget.phoneCtl.text.trim(),
-                  'studentId': selectedStudentId!,
+                  'admissionNo': selectedAdmissionNo!, // Only store admission number
                   'password': widget.passCtl.text.isNotEmpty
                                  ? widget.passCtl.text.trim()
                                  : (widget.data['password'] ?? ''),
@@ -603,280 +1907,6 @@ class _ParentFormContentState extends State<_ParentFormContent> {
                     ? 'Select Student First' 
                     : (widget.isEdit ? 'Save Parent' : 'Add Parent'),
               ),
-            ),
-          ),
-
-          SizedBox(height: 16),
-        ]),
-      ),
-    );
-  }
-}
-
-/// ───────── PAYMENTS ─────────
-class _PaymentsView extends StatelessWidget {
-  final String schoolCode;
-  const _PaymentsView({required this.schoolCode});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Color(0xFFFFF7ED),
-      child: _EditableList(
-        title: 'Payments',
-        collection: FirebaseFirestore.instance
-          .collection('schools').doc(schoolCode)
-          .collection('payments'),
-        itemBuilder: (ctx, doc) {
-          final d = doc.data()! as Map<String, dynamic>;
-          return Card(
-            margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            child: ListTile(
-              title: Text(
-                'KES ${(d['amount'] as num).toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF92400E),
-                ),
-              ),
-              subtitle: Text(
-                '${d['mode']} • ${DateFormat('dd MMM yyyy').format((d['date'] as Timestamp).toDate())} • Adm#: ${d['admissionNo']}'
-              ),
-              trailing: Icon(Icons.edit, color: Color(0xFFB45309)),
-              onTap: () => _showPaymentForm(ctx, doc, schoolCode),
-            ),
-          );
-        },
-        onAdd: () => _showPaymentForm(context, null, schoolCode),
-      ),
-    );
-  }
-
-  void _showPaymentForm(BuildContext ctx, QueryDocumentSnapshot? doc, String code) async {
-    final isEdit = doc != null;
-    final data = isEdit ? doc.data()! as Map<String, dynamic> : <String, dynamic>{};
-    final amountCtl = TextEditingController(text: data['amount']?.toString());
-    final modeCtl   = TextEditingController(text: data['mode'] as String?);
-    DateTime date = data['date'] != null
-      ? (data['date'] as Timestamp).toDate()
-      : DateTime.now();
-
-    final studentSnap = await FirebaseFirestore.instance
-      .collection('schools').doc(code)
-      .collection('students')
-      .orderBy('admissionNo')
-      .get();
-    final studentDocs = studentSnap.docs;
-
-    if (studentDocs.isEmpty) {
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        SnackBar(content: Text('No students found. Please add students first.'))
-      );
-      return;
-    }
-
-    showModalBottomSheet(
-      context: ctx,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))
-      ),
-      builder: (_) => _PaymentFormContent(
-        ctx: ctx,
-        doc: doc,
-        code: code,
-        isEdit: isEdit,
-        data: data,
-        amountCtl: amountCtl,
-        modeCtl: modeCtl,
-        date: date,
-        studentDocs: studentDocs,
-      ),
-    );
-  }
-}
-
-class _PaymentFormContent extends StatefulWidget {
-  final BuildContext ctx;
-  final QueryDocumentSnapshot? doc;
-  final String code;
-  final bool isEdit;
-  final Map<String, dynamic> data;
-  final TextEditingController amountCtl;
-  final TextEditingController modeCtl;
-  final DateTime date;
-  final List<QueryDocumentSnapshot> studentDocs;
-
-  const _PaymentFormContent({
-    required this.ctx,
-    required this.doc,
-    required this.code,
-    required this.isEdit,
-    required this.data,
-    required this.amountCtl,
-    required this.modeCtl,
-    required this.date,
-    required this.studentDocs,
-  });
-
-  @override
-  _PaymentFormContentState createState() => _PaymentFormContentState();
-}
-
-class _PaymentFormContentState extends State<_PaymentFormContent> {
-  String? selectedAdmissionNo;
-  late DateTime selectedDate;
-
-  @override
-  void initState() {
-    super.initState();
-    selectedAdmissionNo = widget.isEdit
-      ? widget.data['admissionNo'] as String?
-      : null;
-    selectedDate = widget.date;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(widget.ctx).viewInsets.bottom,
-        left: 16, right: 16, top: 24
-      ),
-      child: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(
-            widget.isEdit ? 'Edit Payment' : 'Add Payment',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFFB45309),
-            ),
-          ),
-          SizedBox(height: 16),
-
-          _ModernField(
-            controller: widget.amountCtl,
-            label: 'Amount',
-            keyboard: TextInputType.number,
-          ),
-          _ModernField(
-            controller: widget.modeCtl,
-            label: 'Mode',
-          ),
-
-          // ─── Student dropdown using admissionNo ───
-          Container(
-            margin: EdgeInsets.symmetric(vertical: 6),
-            decoration: BoxDecoration(
-              color: Color(0xFFFFF7ED),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: DropdownButtonFormField<String>(
-              value: selectedAdmissionNo,
-              hint: Text('Select Student', style: TextStyle(color: Colors.grey[600])),
-              decoration: InputDecoration(
-                labelText: 'Student (Adm#)',
-                labelStyle: TextStyle(color: Color(0xFF92400E)),
-                floatingLabelBehavior: FloatingLabelBehavior.always,
-                filled: true,
-                fillColor: Color(0xFFFFF7ED),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Color(0xFFB45309), width: 2),
-                ),
-              ),
-              items: widget.studentDocs.map((s) {
-                final sd = s.data() as Map<String, dynamic>;
-                final adm = sd['admissionNo'] as String;
-                return DropdownMenuItem<String>(
-                  value: adm,
-                  child: Text('$adm – ${sd['name']}'),
-                );
-              }).toList(),
-              onChanged: (newAdm) {
-                setState(() => selectedAdmissionNo = newAdm);
-              },
-              dropdownColor: Colors.white,
-            ),
-          ),
-
-          // ─── Date picker ───
-          Card(
-            margin: EdgeInsets.symmetric(vertical: 8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            color: Color(0xFFFFF7ED),
-            child: ListTile(
-              title: Text(
-                'Date: ${DateFormat('dd MMM yyyy').format(selectedDate)}',
-                style: TextStyle(color: Color(0xFF92400E)),
-              ),
-              trailing: Icon(Icons.calendar_today, color: Color(0xFFB45309)),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: widget.ctx,
-                  initialDate: selectedDate,
-                  firstDate: DateTime(2020),
-                  lastDate: DateTime.now(),
-                  builder: (ctx, child) => Theme(
-                    data: Theme.of(ctx).copyWith(
-                      colorScheme: ColorScheme.light(
-                        primary: Color(0xFFB45309),
-                        onPrimary: Colors.white,
-                        surface: Colors.white,
-                        onSurface: Colors.black,
-                      ),
-                    ),
-                    child: child!,
-                  ),
-                );
-                if (picked != null) {
-                  setState(() => selectedDate = picked);
-                }
-              },
-            ),
-          ),
-
-          SizedBox(height: 24),
-
-          // ─── Submit button ───
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                foregroundColor: Colors.white,
-                backgroundColor: selectedAdmissionNo == null
-                  ? Colors.grey[400]
-                  : Color(0xFFB45309),
-                shape: StadiumBorder(),
-                minimumSize: Size(0, 50),
-              ),
-              onPressed: selectedAdmissionNo == null ? null : () async {
-                final col = FirebaseFirestore.instance
-                  .collection('schools').doc(widget.code)
-                  .collection('payments');
-                final payload = {
-                  'amount': double.tryParse(widget.amountCtl.text) ?? 0,
-                  'mode': widget.modeCtl.text.trim(),
-                  'date': Timestamp.fromDate(selectedDate),
-                  'admissionNo': selectedAdmissionNo!,
-                  'timestamp': FieldValue.serverTimestamp(),
-                };
-                if (widget.isEdit) {
-                  await widget.doc!.reference.update(payload);
-                } else {
-                  await col.add(payload);
-                }
-                Navigator.pop(widget.ctx);
-              },
-              child: Text(widget.isEdit ? 'Save Payment' : 'Add Payment'),
             ),
           ),
 
@@ -1120,8 +2150,8 @@ class _SettingsViewState extends State<_SettingsView> {
                     color: Color(0xFFB45309), // Amber 700
                   )),
                   SizedBox(height: 16),
-                  _ModernField(controller: _nameCtl, label: 'Name'),
-                  _ModernField(controller: _emailCtl, label: 'Email', keyboard: TextInputType.emailAddress),
+                  ModernField(controller: _nameCtl, label: 'Name'),
+                  ModernField(controller: _emailCtl, label: 'Email', keyboard: TextInputType.emailAddress),
                   Padding(
                     padding: EdgeInsets.symmetric(vertical: 6),
                     child: TextField(
@@ -1172,12 +2202,12 @@ class _SettingsViewState extends State<_SettingsView> {
 }
 
 // ───────── GENERIC EDITABLE LIST ─────────
-class _EditableList extends StatelessWidget {
+class EditableList extends StatelessWidget {
   final String title;
   final CollectionReference collection;
   final Widget Function(BuildContext, QueryDocumentSnapshot) itemBuilder;
   final VoidCallback onAdd;
-  const _EditableList({
+  const EditableList({
     required this.title,
     required this.collection,
     required this.itemBuilder,
@@ -1231,11 +2261,11 @@ class _EditableList extends StatelessWidget {
 }
 
 // ───────── MODERN FIELD ─────────
-class _ModernField extends StatelessWidget {
+class ModernField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final TextInputType keyboard;
-  const _ModernField({
+  const ModernField({
     required this.controller,
     required this.label,
     this.keyboard=TextInputType.text,
@@ -1265,5 +2295,26 @@ class _ModernField extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ───────── UTILITY FUNCTIONS ─────────
+Future<String> getUniqueDocId(String schoolCode, String collection, String baseId) async {
+  String docId = baseId;
+  int counter = 1;
+  
+  while (true) {
+    final doc = await FirebaseFirestore.instance
+      .collection('schools').doc(schoolCode)
+      .collection(collection)
+      .doc(docId)
+      .get();
+    
+    if (!doc.exists) {
+      return docId;
+    }
+    
+    docId = '$baseId($counter)';
+    counter++;
   }
 }

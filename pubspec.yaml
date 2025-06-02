@@ -45,6 +45,11 @@ dependencies:
   google_fonts: ^6.2.1
   shared_preferences: ^2.5.3
   hive_flutter: ^1.1.0
+   # File picker and Excel processing
+  file_picker: ^8.0.0+1
+  excel: ^4.0.3
+  fl_chart: ^1.0.0
+
 
 dev_dependencies:
   flutter_test:
