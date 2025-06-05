@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:schaccs/firebase_options.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:schaccs/screens/newsletter_screen.dart';
 
 import 'screens/splash_screen.dart';
 import 'screens/school_code_screen.dart';
@@ -12,6 +13,7 @@ import 'screens/statement_screen.dart';
 import 'screens/admin_dashboard.dart';
 import 'screens/super_admin_dashboard.dart';
 
+import 'screens/parent_dashboard.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -138,6 +140,24 @@ class SchaccsApp extends StatelessWidget {
             return MaterialPageRoute(
               builder: (_) => StatementScreen(
                 schoolCode: args['school'],
+                parentDocId: args['parentDocId'],
+              ),
+            );
+
+          case '/parent-dashboard':
+            final args = settings.arguments as Map<String, dynamic>;
+            return MaterialPageRoute(
+              builder: (_) => ParentDashboard(
+                schoolCode: args['schoolCode'],
+                parentDocId: args['parentDocId'],
+              ),
+            );
+
+          case '/newsletter':
+            final args = settings.arguments as Map<String, dynamic>;
+            return MaterialPageRoute(
+              builder: (_) => NewsletterScreen(
+                schoolCode: args['schoolCode'],
                 parentDocId: args['parentDocId'],
               ),
             );

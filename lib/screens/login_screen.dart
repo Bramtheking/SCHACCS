@@ -222,11 +222,10 @@ class _LoginScreenState extends State<LoginScreen> {
         await _saveRecentEmail(email); // Save email before navigating
         Navigator.pushReplacementNamed(
           context,
-          '/statement',
+          '/parent-dashboard',
           arguments: {
-            'school': code,
+            'schoolCode': code,
             'parentDocId': parentSnap.docs.first.id,
-            'email': email,
           },
         );
         return;

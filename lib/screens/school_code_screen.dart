@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:schaccs/screens/login_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SchoolCodeScreen extends StatefulWidget {
   static const String routeName = '/school-code';
@@ -138,6 +139,22 @@ class _SchoolCodeScreenState extends State<SchoolCodeScreen> {
       _showCodeSuggestions = false;
     });
 
+    // Check internet connectivity first
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult == ConnectivityResult.none) {
+        setState(() {
+          _errorText = 'No internet connection. Please check your network and try again.';
+          _loading = false;
+        });
+        _showRetryDialog();
+        return;
+      }
+    } catch (e) {
+      print('Connectivity check error: $e');
+      // Continue with verification if connectivity check fails
+    }
+
     // Special "super" shortcut
     if (code == 'super') {
       // Save to recent codes list before navigating
@@ -170,13 +187,54 @@ class _SchoolCodeScreenState extends State<SchoolCodeScreen> {
       } else {
         setState(() => _errorText = 'Invalid school code');
       }
-    } catch (_) {
-      setState(() => _errorText = 'Error verifying code');
+    } catch (e) {
+      print('Verification error: $e');
+      setState(() => _errorText = 'Error verifying code. Please check your internet connection.');
+      _showRetryDialog();
     } finally {
       setState(() {
         _loading = false;
       });
     }
+  }
+
+  void _showRetryDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.wifi_off, color: Colors.red),
+            SizedBox(width: 8),
+            Text(
+              'Connection Error',
+              style: TextStyle(color: Colors.red),
+            ),
+          ],
+        ),
+        content: Text(
+          'Unable to connect to the server. Please check your internet connection and try again.',
+        ),
+        actions: [
+          TextButton(
+            child: Text('Cancel', style: TextStyle(color: Colors.grey)),
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              shape: StadiumBorder(),
+            ),
+            child: Text('Retry'),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _verifyCode();
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   void _selectSuggestion(String code) {
