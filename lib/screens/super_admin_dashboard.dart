@@ -67,18 +67,18 @@ class SuperAdminDashboardState extends State<SuperAdminDashboard> with SingleTic
         totalParents += parentsSnapshot.count!;
         
         // Sum payments
-        final paymentsSnapshot = await FirebaseFirestore.instance
-            .collection('schools')
-            .doc(school.id)
-            .collection('payments')
-            .where('type', isEqualTo: 'payment history')
-            .get();
-            
-        for (var payment in paymentsSnapshot.docs) {
-          final paymentData = payment.data();
-          totalPayments += (paymentData['amount'] as num?)?.toDouble() ?? 0;
-        }
-      }
+        final feeSummarySnapshot = await FirebaseFirestore.instance
+    .collection('schools')
+    .doc(school.id)
+    .collection('payments')
+    .where('type', isEqualTo: 'fee summary')
+    .get();
+    
+for (var feeSummary in feeSummarySnapshot.docs) {
+  final feeSummaryData = feeSummary.data();
+  totalPayments += (feeSummaryData['totalPaid'] as num?)?.toDouble() ?? 0;
+}
+ }
       
       setState(() {
         _dashboardStats = {

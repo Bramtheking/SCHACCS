@@ -13,7 +13,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:schaccs/screens/login_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' hide Border;
-
+import 'dart:async';
 class AdminDashboard extends StatefulWidget {
   static const routeName = '/admin';
   final String schoolCode;
@@ -29,6 +29,8 @@ class AdminDashboard extends StatefulWidget {
 
 class _AdminDashboardState extends State<AdminDashboard> {
   int _tab = 0;
+  Timer? _refreshTimer;
+final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
   final _tabs = [
     'Home',
     'Students',
@@ -53,7 +55,30 @@ class _AdminDashboardState extends State<AdminDashboard> {
       arguments: widget.schoolCode,
     );
   }
+@override
+void initState() {
+  super.initState();
+  _startAutoRefresh();
+}
 
+void _startAutoRefresh() {
+  _refreshTimer = Timer.periodic(Duration(seconds: 30), (timer) {
+    if (mounted) {
+      setState(() {}); // This will trigger a rebuild and refresh the streams
+    }
+  });
+}
+
+Future<void> _onRefresh() async {
+  setState(() {}); // Trigger rebuild to refresh all streams
+  await Future.delayed(Duration(milliseconds: 500)); // Small delay for UX
+}
+
+@override
+void dispose() {
+  _refreshTimer?.cancel();
+  super.dispose();
+}
   @override
   Widget build(BuildContext context) {
     // ignore: deprecated_member_use
@@ -79,20 +104,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
           elevation: 4,
           actions: [IconButton(icon: Icon(Icons.logout), onPressed: _logout)],
         ),
-        body: IndexedStack(
-          index: _tab,
-          children: [
-            _HomeView(schoolCode: widget.schoolCode),
-            _StudentsView(schoolCode: widget.schoolCode),
-            _ParentsView(schoolCode: widget.schoolCode),
-            PaymentsView(schoolCode: widget.schoolCode),
-            _ReportsView(schoolCode: widget.schoolCode),
-            _SettingsView(
-              schoolCode: widget.schoolCode,
-              adminDocId: widget.adminDocId,
-            ),
-          ],
-        ),
+        body: RefreshIndicator(
+  key: _refreshIndicatorKey,
+  onRefresh: _onRefresh,
+  color: Color(0xFFB45309),
+  child: IndexedStack(
+    index: _tab,
+    children: [
+      _HomeView(schoolCode: widget.schoolCode),
+      _StudentsView(schoolCode: widget.schoolCode),
+      _ParentsView(schoolCode: widget.schoolCode),
+      PaymentsView(schoolCode: widget.schoolCode),
+      _ReportsView(schoolCode: widget.schoolCode),
+      _SettingsView(
+        schoolCode: widget.schoolCode,
+        adminDocId: widget.adminDocId,
+      ),
+    ],
+  ),
+),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _tab,
           onTap: (i) => setState(() => _tab = i),
@@ -184,72 +214,65 @@ class _StatsGrid extends StatelessWidget {
       crossAxisSpacing: 12,
       childAspectRatio: 1.8, // CHANGED: Reduced from 2.2 to 1.8 for more height
       children: [
-        _StatCard(
-          icon: Icons.people,
-          label: 'Students',
-          stream: FirebaseFirestore.instance
-              .collection('schools')
-              .doc(schoolCode)
-              .collection('students')
-              .snapshots()
-              .map((s) => s.docs.length.toString()),
-        ),
-        _StatCard(
-          icon: Icons.family_restroom,
-          label: 'Parents',
-          stream: FirebaseFirestore.instance
-              .collection('schools')
-              .doc(schoolCode)
-              .collection('parents')
-              .snapshots()
-              .map((s) => s.docs.length.toString()),
-        ),
-        _StatCard(
-          icon: Icons.attach_money,
-          label: 'Collected',
-          stream: FirebaseFirestore.instance
-              .collection('schools')
-              .doc(schoolCode)
-              .collection('payments')
-              .where(
-                'type',
-                isEqualTo: 'payment history',
-              ) // ADDED: Filter for payment history only
-              .snapshots()
-              .map((s) {
-                final total = s.docs.fold<double>(
-                  0,
-                  (sum, d) =>
-                      sum + (d.data()['amount'] as num? ?? 0).toDouble(),
-                );
-                return 'KES ${_formatCurrency(total)}'; // CHANGED: Better formatting
-              }),
-        ),
-        _StatCard(
-          icon: Icons.warning,
-          label: 'With Balance',
-          stream: FirebaseFirestore.instance
-              .collection('schools')
-              .doc(schoolCode)
-              .collection('payments')
-              .where(
-                'type',
-                isEqualTo: 'fee summary',
-              ) // CHANGED: Use fee summary data
-              .snapshots()
-              .map((s) {
-                int count =
-                    s.docs.where((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final totalBalance =
-                          (data['totalBalance'] as num? ?? 0).toDouble();
-                      return totalBalance >
-                          0; // Students with outstanding balance
-                    }).length;
-                return count.toString();
-              }),
-        ),
-      ],
+  _StatCard(
+    icon: Icons.people,
+    label: 'Students',
+    stream: FirebaseFirestore.instance
+        .collection('schools')
+        .doc(schoolCode)
+        .collection('students')
+        .snapshots()
+        .map((s) => s.docs.length.toString()),
+  ),
+  _StatCard(
+    icon: Icons.family_restroom,
+    label: 'Parents',
+    stream: FirebaseFirestore.instance
+        .collection('schools')
+        .doc(schoolCode)
+        .collection('parents')
+        .snapshots()
+        .map((s) => s.docs.length.toString()),
+  ),
+  _StatCard(
+    icon: Icons.attach_money,
+    label: 'Collected',
+    stream: FirebaseFirestore.instance
+        .collection('schools')
+        .doc(schoolCode)
+        .collection('payments')
+        .where('type', isEqualTo: 'fee summary')
+        .snapshots()
+        .map((s) {
+          final total = s.docs.fold<double>(
+            0,
+            (sum, d) {
+              final data = d.data() as Map<String, dynamic>;
+              return sum + (data['totalPaid'] as num? ?? 0).toDouble();
+            },
+          );
+          return 'KES ${_formatCurrency(total)}';
+        }),
+  ),
+  _StatCard(
+    icon: Icons.warning,
+    label: 'With Balance',
+    stream: FirebaseFirestore.instance
+        .collection('schools')
+        .doc(schoolCode)
+        .collection('payments')
+        .where('type', isEqualTo: 'fee summary')
+        .snapshots()
+        .map((s) {
+          int count = s.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final totalBalance = (data['totalBalance'] as num? ?? 0).toDouble();
+            return totalBalance > 0;
+          }).length;
+          return count.toString();
+        }),
+  ),
+],
     );
   }
 
@@ -940,11 +963,12 @@ class PaymentsViewState extends State<PaymentsView>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
+@override
+void initState() {
+  super.initState();
+  _tabController = TabController(length: 2, vsync: this);
+}
+
 
   @override
   void dispose() {

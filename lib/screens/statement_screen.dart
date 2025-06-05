@@ -605,138 +605,130 @@ class _StatementScreenState extends State<StatementScreen> {
     );
   }
 
-  Widget _buildPaymentCard(Map<String, dynamic> payment) {
-    final amount = double.tryParse(payment['amount']?.toString() ?? '0') ?? 0;
-    final formattedAmount = NumberFormat('#,##0.00').format(amount);
-    final date = payment['date'] is Timestamp 
-        ? DateFormat('dd MMM yyyy').format((payment['date'] as Timestamp).toDate())
-        : '';
-    
-    return Card(
-      margin: EdgeInsets.only(bottom: 12),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [Colors.white, backgroundColor.withOpacity(0.1)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          border: Border.all(color: primaryColor.withOpacity(0.1)),
+ Widget _buildPaymentCard(Map<String, dynamic> payment) {
+  final amount = double.tryParse(payment['amount']?.toString() ?? '0') ?? 0;
+  final formattedAmount = NumberFormat('#,##0.00').format(amount);
+  final date = payment['date'] is Timestamp 
+      ? DateFormat('yyyy-MM-dd HH:mm:ss').format((payment['date'] as Timestamp).toDate())
+      : '';
+  
+  // Extract payment mode and transaction details
+  final paymentMode = payment['mode']?.toString() ?? 'Payment';
+  final transactionNo = payment['transactionNumber']?.toString() ?? '';
+  final receiptNo = payment['receiptNumber']?.toString() ?? '';
+  
+  // Create transaction title
+  String transactionTitle = paymentMode;
+  if (transactionNo.isNotEmpty) {
+    transactionTitle += ' - ${transactionNo.length > 10 ? transactionNo.substring(0, 10) + '...' : transactionNo}';
+  } else if (receiptNo.isNotEmpty) {
+    transactionTitle += ' - ${receiptNo.length > 10 ? receiptNo.substring(0, 10) + '...' : receiptNo}';
+  }
+  
+  return Container(
+    margin: EdgeInsets.only(bottom: 8),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.grey.withOpacity(0.1),
+          blurRadius: 4,
+          offset: Offset(0, 2),
         ),
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      ],
+    ),
+    child: IntrinsicHeight(
+      child: Row(
+        children: [
+          // Green left border
+          Container(
+            width: 6,
+            decoration: BoxDecoration(
+              color: Colors.green[600],
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(8),
+                bottomLeft: Radius.circular(8),
+              ),
+            ),
+          ),
+          // Content
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Row(
                 children: [
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.green[200]!),
-                    ),
-                    child: Text(
-                      'KES $formattedAmount',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: Colors.green[700],
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                  // Left side - Date and transaction details
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.calendar_today, size: 14, color: primaryColor),
-                        SizedBox(width: 4),
+                        // Date
                         Text(
                           date,
                           style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        // Transaction title
+                        Text(
+                          transactionTitle,
+                          style: TextStyle(
+                            fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: primaryColor,
-                            fontSize: 13,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        // Additional date/time
+                        Text(
+                          date.isNotEmpty ? DateFormat('yyyy-MM-dd HH:mm:ss').format((payment['date'] as Timestamp).toDate()) : '',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[500],
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-              SizedBox(height: 16),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Column(
+                  // Right side - Amount and status
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      _PaymentDetailField(
-                        icon: Icons.attach_money,
-                        label: 'Amount',
-                        value: formattedAmount,
-                        isEmpty: amount == 0,
-                      ),
-                      Divider(height: 16, color: Colors.grey[300]),
-                      _PaymentDetailField(
-                        icon: _getPaymentModeIcon(payment['mode'] ?? ''),
-                        label: 'Payment Mode',
-                        value: payment['mode']?.toString() ?? 'Not specified',
-                        isEmpty: (payment['mode']?.toString() ?? '').isEmpty,
-                      ),
-                      Divider(height: 16, color: Colors.grey[300]),
-                      _PaymentDetailField(
-                        icon: Icons.event,
-                        label: 'Payment Date',
-                        value: date.isNotEmpty ? date : 'Not specified',
-                        isEmpty: date.isEmpty,
-                      ),
-                      if (payment.containsKey('receiptNumber') && 
-                          payment['receiptNumber'] != null && 
-                          payment['receiptNumber'].toString().isNotEmpty) ...[
-                        Divider(height: 16, color: Colors.grey[300]),
-                        _PaymentDetailField(
-                          icon: Icons.receipt,
-                          label: 'Receipt Number',
-                          value: payment['receiptNumber'].toString(),
-                          isEmpty: false,
+                      // Amount
+                      Text(
+                        '${formattedAmount} KES',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green[600],
                         ),
-                      ],
-                      if (payment.containsKey('transactionNumber') && 
-                          payment['transactionNumber'] != null && 
-                          payment['transactionNumber'].toString().isNotEmpty) ...[
-                        Divider(height: 16, color: Colors.grey[300]),
-                        _PaymentDetailField(
-                          icon: Icons.confirmation_number,
-                          label: 'Transaction Number',
-                          value: payment['transactionNumber'].toString(),
-                          isEmpty: false,
+                      ),
+                      SizedBox(height: 4),
+                      // Status
+                      Text(
+                        'Success',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w500,
                         ),
-                      ],
+                      ),
                     ],
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _PaymentDetailField({
     required IconData icon,
@@ -800,6 +792,7 @@ class _StatementScreenState extends State<StatementScreen> {
     );
   }
 
+  // ignore: unused_element
   IconData _getPaymentModeIcon(String payMode) {
     payMode = payMode.toLowerCase();
     
