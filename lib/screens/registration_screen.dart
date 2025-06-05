@@ -6,9 +6,15 @@ import 'package:schaccs/screens/verification_screen.dart';
 class RegistrationScreen extends StatefulWidget {
   static const String routeName = '/register';
   final String schoolCode;
+  final String verifiedAdmissionNo;
+  final String verifiedPhone;
 
-  const RegistrationScreen({super.key, required this.schoolCode});
-
+  const RegistrationScreen({
+    super.key, 
+    required this.schoolCode,
+    required this.verifiedAdmissionNo,
+    required this.verifiedPhone,
+  });
   @override
   _RegistrationScreenState createState() => _RegistrationScreenState();
 }
@@ -129,21 +135,39 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     });
 
     try {
-      final parentsColl = FirebaseFirestore.instance
-          .collection('schools')
-          .doc(widget.schoolCode)
-          .collection('parents');
+  final parentsColl = FirebaseFirestore.instance
+      .collection('schools')
+      .doc(widget.schoolCode)
+      .collection('parents');
 
-      // Using email as unique ID is safer than name
-      final docRef = parentsColl.doc();
+  // Check existing parents for this admission number
+  final existingParents = await parentsColl
+      .where('admissionNo', isEqualTo: widget.verifiedAdmissionNo)
+      .get();
 
-      await docRef.set({
-        'name': _nameCtrl.text.trim(),
-        'email': _emailCtrl.text.trim(),
-        'city': _cityCtrl.text.trim(),
-        'password': _passCtrl.text,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+  // Check if already 2 parents exist
+  if (existingParents.docs.length >= 2) {
+    setState(() => _error = 'Maximum 2 parents allowed per student. This student already has 2 registered parents.');
+    return;
+  }
+
+  // Determine parent index (1 or 2)
+  int parentIndex = existingParents.docs.length + 1;
+
+  // Create document ID in format "admissionNo(parentIndex)"
+  final docId = '${widget.verifiedAdmissionNo}($parentIndex)';
+  final docRef = parentsColl.doc(docId);
+
+  await docRef.set({
+    'name': _nameCtrl.text.trim(),
+    'email': _emailCtrl.text.trim(),
+    'city': _cityCtrl.text.trim(),
+    'password': _passCtrl.text,
+    'admissionNo': widget.verifiedAdmissionNo,
+    'phone': widget.verifiedPhone,
+    'parentIndex': parentIndex, // Store which parent this is (1 or 2)
+    'createdAt': FieldValue.serverTimestamp(),
+  });
 
       Navigator.pushReplacementNamed(
         context,
@@ -169,9 +193,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   leading: IconButton(
     icon: Icon(Icons.arrow_back, color: Colors.white),
     onPressed: () {
-      Navigator.of(context).pushReplacementNamed(
-        VerificationScreen.routeName,
-        arguments: widget.schoolCode,  // <-- pass the schoolCode String here
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VerificationScreen(schoolCode: widget.schoolCode),
+        ),
       );
     },
   ),

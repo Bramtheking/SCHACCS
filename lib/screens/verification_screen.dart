@@ -108,7 +108,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => RegistrationScreen(schoolCode: widget.schoolCode),
+            builder: (_) => RegistrationScreen(schoolCode: widget.schoolCode,
+        verifiedAdmissionNo: admission, // Pass the verified admission number
+        verifiedPhone: phone,),
           ),
         );
       } else {

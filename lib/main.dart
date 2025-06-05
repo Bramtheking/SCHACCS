@@ -74,23 +74,65 @@ class SchaccsApp extends StatelessWidget {
         switch (settings.name) {
           case SplashScreen.routeName:
             return MaterialPageRoute(builder: (_) => SplashScreen());
+            
           case SchoolCodeScreen.routeName:
             return MaterialPageRoute(builder: (_) => SchoolCodeScreen());
+            
           case LoginScreen.routeName:
             final code = settings.arguments as String;
             return MaterialPageRoute(
               builder: (_) => LoginScreen(schoolCode: code),
             );
+            
           case VerificationScreen.routeName:
             final code = settings.arguments as String;
             return MaterialPageRoute(
               builder: (_) => VerificationScreen(schoolCode: code),
             );
+            
           case RegistrationScreen.routeName:
-            final code = settings.arguments as String;
-            return MaterialPageRoute(
-              builder: (_) => RegistrationScreen(schoolCode: code),
-            );
+            // RegistrationScreen now requires verified data, so it should only be
+            // navigated to directly from VerificationScreen with proper parameters
+            // We'll handle this case but it shouldn't be used via named routes
+            final args = settings.arguments as Map<String, dynamic>?;
+            if (args != null) {
+              return MaterialPageRoute(
+                builder: (_) => RegistrationScreen(
+                  schoolCode: args['schoolCode'],
+                  verifiedAdmissionNo: args['verifiedAdmissionNo'],
+                  verifiedPhone: args['verifiedPhone'],
+                ),
+              );
+            } else {
+              // Fallback - redirect to verification if no proper arguments
+              return MaterialPageRoute(
+                builder: (_) => Scaffold(
+                  body: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, size: 64, color: Colors.red),
+                        SizedBox(height: 16),
+                        Text(
+                          'Registration requires verification first',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 8),
+                        Text('Please go through the verification process'),
+                        SizedBox(height: 24),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pushReplacementNamed(context, SchoolCodeScreen.routeName);
+                          },
+                          child: Text('Go to School Code'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+            
           case StatementScreen.routeName:
             final args = settings.arguments as Map<String, dynamic>;
             return MaterialPageRoute(
@@ -99,6 +141,7 @@ class SchaccsApp extends StatelessWidget {
                 parentDocId: args['parentDocId'],
               ),
             );
+            
           case AdminDashboard.routeName:
             final args = settings.arguments as Map<String, dynamic>;
             return MaterialPageRoute(
@@ -107,12 +150,33 @@ class SchaccsApp extends StatelessWidget {
                 adminDocId: args['adminDocId'],
               ),
             );
+            
           case SuperAdminDashboard.routeName:
             return MaterialPageRoute(builder: (_) => SuperAdminDashboard());
+            
           default:
             return MaterialPageRoute(
               builder: (_) => Scaffold(
-                body: Center(child: Text('Unknown route: ${settings.name}')),
+                body: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 64, color: Colors.orange),
+                      SizedBox(height: 16),
+                      Text(
+                        'Unknown route: ${settings.name}',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pushReplacementNamed(context, SplashScreen.routeName);
+                        },
+                        child: Text('Go to Home'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             );
         }
