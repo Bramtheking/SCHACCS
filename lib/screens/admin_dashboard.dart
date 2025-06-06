@@ -2702,26 +2702,39 @@ class _NewsletterView extends StatelessWidget {
                   .orderBy('publishedAt', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return Center(
                     child: CircularProgressIndicator(color: Color(0xFFB45309)),
                   );
                 }
 
-                final newsletters = snapshot.data!.docs;
-                if (newsletters.isEmpty) {
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   return Center(
-                    child: Text('No newsletters created yet.'),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.newspaper, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text('No newsletters created yet.'),
+                        SizedBox(height: 8),
+                        Text('Tap the Create button to get started!'),
+                      ],
+                    ),
                   );
                 }
 
+                final newsletters = snapshot.data!.docs;
                 return ListView.builder(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   itemCount: newsletters.length,
                   itemBuilder: (context, index) {
                     final doc = newsletters[index];
                     final data = doc.data() as Map<String, dynamic>;
-                    return _buildNewsletterItem(context, doc.id, data, schoolCode);
+                    return _buildNewsletterCard(context, doc.id, data, schoolCode);
                   },
                 );
               },
@@ -2732,47 +2745,136 @@ class _NewsletterView extends StatelessWidget {
     );
   }
 
-  Widget _buildNewsletterItem(BuildContext context, String id, Map<String, dynamic> data, String schoolCode) {
+  Widget _buildNewsletterCard(BuildContext context, String id, Map<String, dynamic> data, String schoolCode) {
     final title = data['title'] ?? 'Untitled';
     final category = data['category'] ?? 'announcements';
     final priority = data['priority'] ?? 'normal';
     final publishedAt = (data['publishedAt'] as Timestamp?)?.toDate();
+    final targetType = data['targetType'] ?? 'global';
+    final targetIds = List<String>.from(data['targetIds'] ?? []);
     
+    String targetText = targetType == 'global' 
+        ? 'All Students' 
+        : targetType == 'class' 
+            ? 'Classes: ${targetIds.join(', ')}'
+            : 'Students: ${targetIds.length} selected';
+
     return Card(
-      margin: EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(title, style: TextStyle(fontWeight: FontWeight.w500)),
-        subtitle: Text('$category • ${priority.toUpperCase()}${publishedAt != null ? ' • ${DateFormat('MMM dd, yyyy').format(publishedAt)}' : ''}'),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') {
-              _showNewsletterForm(context, {'id': id, ...data}, schoolCode);
-            } else if (value == 'delete') {
-              _deleteNewsletter(context, id, schoolCode);
-            }
-          },
-          itemBuilder: (context) => [
-            PopupMenuItem(value: 'edit', child: Text('Edit')),
-            PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
-          ],
+      margin: EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: priority == 'urgent' 
+              ? Border.all(color: Colors.red, width: 2)
+              : null,
+        ),
+        child: ListTile(
+          contentPadding: EdgeInsets.all(16),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title, 
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF92400E),
+                  ),
+                ),
+              ),
+              if (priority == 'urgent')
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'URGENT',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: 8),
+              Text(
+                '${category.toUpperCase()} • $targetText',
+                style: TextStyle(
+                  color: Color(0xFFB45309),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (publishedAt != null) ...[
+                SizedBox(height: 4),
+                Text(
+                  'Published: ${DateFormat('MMM dd, yyyy HH:mm').format(publishedAt)}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ],
+              SizedBox(height: 8),
+              Text(
+                data['content']!.toString().substring(0, 
+                  data['content']!.toString().length > 100 ? 100 : data['content']?.toString().length ?? 0
+                ) + (data['content']!.toString().length > 100 ? '...' : ''),
+                style: TextStyle(fontSize: 13),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+          trailing: PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: Color(0xFFB45309)),
+            onSelected: (value) {
+              if (value == 'edit') {
+                _showNewsletterForm(context, {'id': id, ...data}, schoolCode);
+              } else if (value == 'delete') {
+                _deleteNewsletter(context, id, schoolCode);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'edit', 
+                child: Row(
+                  children: [
+                    Icon(Icons.edit, size: 18),
+                    SizedBox(width: 8),
+                    Text('Edit'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete', 
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Delete', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   void _showNewsletterForm(BuildContext context, Map<String, dynamic>? data, String schoolCode) {
-    // Newsletter form implementation - I'll provide this separately if needed
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(data == null ? 'Create Newsletter' : 'Edit Newsletter'),
-        content: Text('Newsletter form will be implemented here'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Close'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => NewsletterFormSheet(
+        schoolCode: schoolCode,
+        existingData: data,
       ),
     );
   }
@@ -2782,7 +2884,7 @@ class _NewsletterView extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Delete Newsletter'),
-        content: Text('Are you sure you want to delete this newsletter?'),
+        content: Text('Are you sure you want to delete this newsletter? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -2790,19 +2892,639 @@ class _NewsletterView extends StatelessWidget {
           ),
           TextButton(
             onPressed: () async {
-              await FirebaseFirestore.instance
-                  .collection('schools')
-                  .doc(schoolCode)
-                  .collection('newsletters')
-                  .doc(id)
-                  .delete();
-              Navigator.pop(context);
+              try {
+                await FirebaseFirestore.instance
+                    .collection('schools')
+                    .doc(schoolCode)
+                    .collection('newsletters')
+                    .doc(id)
+                    .delete();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Newsletter deleted successfully'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error deleting newsletter: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             child: Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
+  }
+}
+class NewsletterFormSheet extends StatefulWidget {
+  final String schoolCode;
+  final Map<String, dynamic>? existingData;
+
+  const NewsletterFormSheet({
+    Key? key,
+    required this.schoolCode,
+    this.existingData,
+  }) : super(key: key);
+
+  @override
+  NewsletterFormSheetState createState() => NewsletterFormSheetState();
+}
+
+class NewsletterFormSheetState extends State<NewsletterFormSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _contentController = TextEditingController();
+  final _authorController = TextEditingController();
+  
+  String _selectedCategory = 'announcements';
+  String _selectedPriority = 'normal';
+  String _selectedTargetType = 'global';
+  List<String> _selectedTargetIds = [];
+  DateTime _publishDate = DateTime.now();
+  
+  List<QueryDocumentSnapshot> _students = [];
+  List<String> _classes = [];
+  bool _loading = false;
+
+  final List<String> _categories = [
+    'announcements',
+    'academic',
+    'events',
+    'sports',
+    'achievements'
+  ];
+
+  final List<String> _priorities = ['normal', 'urgent'];
+  final List<String> _targetTypes = ['global', 'class', 'student'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    if (widget.existingData != null) {
+      _populateExistingData();
+    }
+  }
+
+  void _populateExistingData() {
+    final data = widget.existingData!;
+    _titleController.text = data['title'] ?? '';
+    _contentController.text = data['content'] ?? '';
+    _authorController.text = data['authorName'] ?? '';
+    _selectedCategory = data['category'] ?? 'announcements';
+    _selectedPriority = data['priority'] ?? 'normal';
+    _selectedTargetType = data['targetType'] ?? 'global';
+    _selectedTargetIds = List<String>.from(data['targetIds'] ?? []);
+    if (data['publishedAt'] != null) {
+      _publishDate = (data['publishedAt'] as Timestamp).toDate();
+    }
+  }
+
+  Future<void> _loadData() async {
+    try {
+      // Load students
+      final studentsSnapshot = await FirebaseFirestore.instance
+          .collection('schools')
+          .doc(widget.schoolCode)
+          .collection('students')
+          .orderBy('admissionNo')
+          .get();
+      
+      _students = studentsSnapshot.docs;
+      
+      // Extract unique classes
+      Set<String> classSet = {};
+      for (var student in _students) {
+        final data = student.data() as Map<String, dynamic>;
+        final studentClass = data['class']?.toString().trim();
+        if (studentClass != null && studentClass.isNotEmpty) {
+          classSet.add(studentClass);
+        }
+      }
+      _classes = classSet.toList()..sort();
+      
+      setState(() {});
+    } catch (e) {
+      print('Error loading data: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.9,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            margin: EdgeInsets.only(top: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.existingData == null ? 'Create Newsletter' : 'Edit Newsletter',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFB45309),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close),
+                ),
+              ],
+            ),
+          ),
+          
+          Expanded(
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    _buildSectionTitle('Newsletter Details'),
+                    ModernField(
+                      controller: _titleController,
+                      label: 'Title *',
+                    ),
+                    
+                    // Author
+                    ModernField(
+                      controller: _authorController,
+                      label: 'Author Name *',
+                    ),
+                    
+                    // Category and Priority Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildDropdown(
+                            'Category *',
+                            _selectedCategory,
+                            _categories,
+                            (value) => setState(() => _selectedCategory = value!),
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: _buildDropdown(
+                            'Priority *',
+                            _selectedPriority,
+                            _priorities,
+                            (value) => setState(() => _selectedPriority = value!),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    SizedBox(height: 16),
+                    
+                    // Content
+                    _buildSectionTitle('Content'),
+                    _buildRichTextEditor(),
+                    
+                    SizedBox(height: 16),
+                    
+                    // Targeting
+                    _buildSectionTitle('Targeting'),
+                    _buildTargetingSection(),
+                    
+                    SizedBox(height: 16),
+                    
+                    // Publish Date
+                    _buildSectionTitle('Publishing'),
+                    _buildDatePicker(),
+                    
+                    SizedBox(height: 32),
+                    
+                    // Submit Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFFB45309),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _loading ? null : _submitNewsletter,
+                        child: _loading
+                            ? CircularProgressIndicator(color: Colors.white)
+                            : Text(
+                                widget.existingData == null ? 'Publish Newsletter' : 'Update Newsletter',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                      ),
+                    ),
+                    
+                    SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12, top: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFFB45309),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown(String label, String value, List<String> items, Function(String?) onChanged) {
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 6),
+      child: DropdownButtonFormField<String>(
+        value: value,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: Color(0xFF92400E)),
+          filled: true,
+          fillColor: Color(0xFFFFF7ED),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Color(0xFFB45309), width: 2),
+          ),
+        ),
+        items: items.map((item) => DropdownMenuItem(
+          value: item,
+          child: Text(item.toUpperCase()),
+        )).toList(),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _buildRichTextEditor() {
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          // Formatting toolbar
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Color(0xFFB45309).withOpacity(0.1),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  'Content Editor',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFFB45309),
+                  ),
+                ),
+                Spacer(),
+                Icon(Icons.format_bold, size: 18, color: Color(0xFFB45309)),
+                SizedBox(width: 8),
+                Icon(Icons.format_italic, size: 18, color: Color(0xFFB45309)),
+                SizedBox(width: 8),
+                Icon(Icons.format_list_bulleted, size: 18, color: Color(0xFFB45309)),
+              ],
+            ),
+          ),
+          // Text field
+          TextFormField(
+            controller: _contentController,
+            maxLines: 8,
+            decoration: InputDecoration(
+              hintText: 'Write your newsletter content here...\n\nTips:\n• Use clear, engaging language\n• Break content into paragraphs\n• Include important details\n• End with a call to action if needed',
+              hintStyle: TextStyle(color: Colors.grey[500]),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: EdgeInsets.all(16),
+            ),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Content is required';
+              }
+              return null;
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTargetingSection() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Color(0xFFB45309).withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Who should see this newsletter?',
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF92400E),
+            ),
+          ),
+          SizedBox(height: 12),
+          
+          // Target type selection
+          Wrap(
+            spacing: 8,
+            children: _targetTypes.map((type) {
+              final isSelected = _selectedTargetType == type;
+              return ChoiceChip(
+                label: Text(
+                  type == 'global' ? 'All Students' : 
+                  type == 'class' ? 'Specific Classes' : 'Specific Students',
+                ),
+                selected: isSelected,
+                onSelected: (selected) {
+                  setState(() {
+                    _selectedTargetType = type;
+                    _selectedTargetIds.clear();
+                  });
+                },
+                selectedColor: Color(0xFFB45309),
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : Color(0xFF92400E),
+                ),
+              );
+            }).toList(),
+          ),
+          
+          if (_selectedTargetType != 'global') ...[
+            SizedBox(height: 16),
+            _buildTargetSelection(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTargetSelection() {
+    if (_selectedTargetType == 'class') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Select Classes:',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
+          SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: _classes.map((className) {
+              final isSelected = _selectedTargetIds.contains(className);
+              return FilterChip(
+                label: Text(className),
+                selected: isSelected,
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedTargetIds.add(className);
+                    } else {
+                      _selectedTargetIds.remove(className);
+                    }
+                  });
+                },
+                selectedColor: Color(0xFFB45309).withOpacity(0.3),
+              );
+            }).toList(),
+          ),
+        ],
+      );
+    } else if (_selectedTargetType == 'student') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Select Students:',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
+          SizedBox(height: 8),
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ListView.builder(
+              itemCount: _students.length,
+              itemBuilder: (context, index) {
+                final student = _students[index];
+                final data = student.data() as Map<String, dynamic>;
+                final admNo = data['admissionNo'] ?? '';
+                final name = data['name'] ?? '';
+                final isSelected = _selectedTargetIds.contains(admNo);
+                
+                return CheckboxListTile(
+                  title: Text('$name ($admNo)'),
+                  subtitle: Text('Class: ${data['class'] ?? 'N/A'}'),
+                  value: isSelected,
+                  onChanged: (selected) {
+                    setState(() {
+                      if (selected == true) {
+                        _selectedTargetIds.add(admNo);
+                      } else {
+                        _selectedTargetIds.remove(admNo);
+                      }
+                    });
+                  },
+                  activeColor: Color(0xFFB45309),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+    return SizedBox.shrink();
+  }
+
+  Widget _buildDatePicker() {
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Color(0xFFFFF7ED),
+      child: ListTile(
+        title: Text(
+          'Publish Date & Time',
+          style: TextStyle(color: Color(0xFF92400E), fontWeight: FontWeight.w500),
+        ),
+        subtitle: Text(
+          DateFormat('MMM dd, yyyy HH:mm').format(_publishDate),
+          style: TextStyle(color: Color(0xFFB45309)),
+        ),
+        trailing: Icon(Icons.calendar_today, color: Color(0xFFB45309)),
+        onTap: () async {
+          final date = await showDatePicker(
+            context: context,
+            initialDate: _publishDate,
+            firstDate: DateTime.now().subtract(Duration(days: 1)),
+            lastDate: DateTime.now().add(Duration(days: 365)),
+          );
+          
+          if (date != null) {
+            final time = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.fromDateTime(_publishDate),
+            );
+            
+            if (time != null) {
+              setState(() {
+                _publishDate = DateTime(
+                  date.year,
+                  date.month,
+                  date.day,
+                  time.hour,
+                  time.minute,
+                );
+              });
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  Future<void> _submitNewsletter() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    if (_titleController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Title is required'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    
+    if (_contentController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Content is required'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    
+    if (_authorController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Author name is required'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      final newsletterData = {
+        'title': _titleController.text.trim(),
+        'content': _contentController.text.trim(),
+        'category': _selectedCategory,
+        'priority': _selectedPriority,
+        'authorName': _authorController.text.trim(),
+        'targetType': _selectedTargetType,
+        'targetIds': _selectedTargetIds,
+        'publishedAt': Timestamp.fromDate(_publishDate),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (widget.existingData == null) {
+        // Create new newsletter
+        newsletterData['createdAt'] = FieldValue.serverTimestamp();
+        await FirebaseFirestore.instance
+            .collection('schools')
+            .doc(widget.schoolCode)
+            .collection('newsletters')
+            .add(newsletterData);
+      } else {
+        // Update existing newsletter
+        await FirebaseFirestore.instance
+            .collection('schools')
+            .doc(widget.schoolCode)
+            .collection('newsletters')
+            .doc(widget.existingData!['id'])
+            .update(newsletterData);
+      }
+
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.existingData == null 
+                ? 'Newsletter published successfully!' 
+                : 'Newsletter updated successfully!',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    _authorController.dispose();
+    super.dispose();
   }
 }
 /// ───────── SETTINGS ─────────

@@ -458,7 +458,6 @@ class _NewsletterScreenState extends State<NewsletterScreen>
 
   Widget _buildFeaturedCard(String id, Map<String, dynamic> data, int index) {
     final title = data['title'] as String? ?? 'Untitled';
-    final content = data['content'] as String? ?? '';
     final category = data['category'] as String? ?? 'announcements';
     final imageUrls = List<String>.from(data['imageUrls'] ?? []);
     final publishedAt = (data['publishedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
