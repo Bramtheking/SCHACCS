@@ -14,6 +14,7 @@ import 'package:schaccs/screens/login_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' hide Border;
 import 'dart:async';
+
 class AdminDashboard extends StatefulWidget {
   static const routeName = '/admin';
   final String schoolCode;
@@ -37,6 +38,7 @@ final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshI
     'Parents',
     'Payments',
     'Reports',
+    'Newsletter',
     'Settings',
   ];
 
@@ -116,6 +118,7 @@ void dispose() {
       _ParentsView(schoolCode: widget.schoolCode),
       PaymentsView(schoolCode: widget.schoolCode),
       _ReportsView(schoolCode: widget.schoolCode),
+      _NewsletterView(schoolCode: widget.schoolCode),
       _SettingsView(
         schoolCode: widget.schoolCode,
         adminDocId: widget.adminDocId,
@@ -149,6 +152,7 @@ void dispose() {
               icon: Icon(Icons.insert_chart),
               label: 'Reports',
             ),
+            BottomNavigationBarItem(icon: Icon(Icons.newspaper), label: 'Newsletter'), // ADD THIS
             BottomNavigationBarItem(
               icon: Icon(Icons.settings),
               label: 'Settings',
@@ -2653,7 +2657,154 @@ class _ReportsView extends StatelessWidget {
     }
   }
 }
+class _NewsletterView extends StatelessWidget {
+  final String schoolCode;
+  const _NewsletterView({required this.schoolCode});
 
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Color(0xFFFFF7ED),
+      child: Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Newsletter Management',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFB45309),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  icon: Icon(Icons.add),
+                  label: Text('Create'),
+                  style: ElevatedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    backgroundColor: Color(0xFFB45309),
+                    shape: StadiumBorder(),
+                  ),
+                  onPressed: () => _showNewsletterForm(context, null, schoolCode),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('schools')
+                  .doc(schoolCode)
+                  .collection('newsletters')
+                  .orderBy('publishedAt', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return Center(
+                    child: CircularProgressIndicator(color: Color(0xFFB45309)),
+                  );
+                }
+
+                final newsletters = snapshot.data!.docs;
+                if (newsletters.isEmpty) {
+                  return Center(
+                    child: Text('No newsletters created yet.'),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: newsletters.length,
+                  itemBuilder: (context, index) {
+                    final doc = newsletters[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    return _buildNewsletterItem(context, doc.id, data, schoolCode);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNewsletterItem(BuildContext context, String id, Map<String, dynamic> data, String schoolCode) {
+    final title = data['title'] ?? 'Untitled';
+    final category = data['category'] ?? 'announcements';
+    final priority = data['priority'] ?? 'normal';
+    final publishedAt = (data['publishedAt'] as Timestamp?)?.toDate();
+    
+    return Card(
+      margin: EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Text(title, style: TextStyle(fontWeight: FontWeight.w500)),
+        subtitle: Text('$category • ${priority.toUpperCase()}${publishedAt != null ? ' • ${DateFormat('MMM dd, yyyy').format(publishedAt)}' : ''}'),
+        trailing: PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == 'edit') {
+              _showNewsletterForm(context, {'id': id, ...data}, schoolCode);
+            } else if (value == 'delete') {
+              _deleteNewsletter(context, id, schoolCode);
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(value: 'edit', child: Text('Edit')),
+            PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showNewsletterForm(BuildContext context, Map<String, dynamic>? data, String schoolCode) {
+    // Newsletter form implementation - I'll provide this separately if needed
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(data == null ? 'Create Newsletter' : 'Edit Newsletter'),
+        content: Text('Newsletter form will be implemented here'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteNewsletter(BuildContext context, String id, String schoolCode) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Newsletter'),
+        content: Text('Are you sure you want to delete this newsletter?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await FirebaseFirestore.instance
+                  .collection('schools')
+                  .doc(schoolCode)
+                  .collection('newsletters')
+                  .doc(id)
+                  .delete();
+              Navigator.pop(context);
+            },
+            child: Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+}
 /// ───────── SETTINGS ─────────
 class _SettingsView extends StatefulWidget {
   final String schoolCode;
