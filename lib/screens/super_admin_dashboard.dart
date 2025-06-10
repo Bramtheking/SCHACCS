@@ -76,6 +76,7 @@ class SuperAdminDashboardState extends State<SuperAdminDashboard> with SingleTic
     
 for (var feeSummary in feeSummarySnapshot.docs) {
   final feeSummaryData = feeSummary.data();
+  
   totalPayments += (feeSummaryData['totalPaid'] as num?)?.toDouble() ?? 0;
 }
  }
@@ -177,7 +178,9 @@ for (var feeSummary in feeSummarySnapshot.docs) {
     final addressController = TextEditingController();
     final phoneController = TextEditingController();
     final emailController = TextEditingController();
-
+final poBoxController       = TextEditingController();
+final principalController   = TextEditingController();
+final logoUrlController     = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -194,6 +197,11 @@ for (var feeSummary in feeSummarySnapshot.docs) {
               ModernField(controller: addressController, label: 'Address'),
               ModernField(controller: phoneController, label: 'Phone Number'),
               ModernField(controller: emailController, label: 'Email'),
+              // NEW – extra fields
+ModernField(controller: poBoxController,     label: 'PO Box'),
+ModernField(controller: principalController, label: 'Principal Name'),
+ModernField(controller: logoUrlController,   label: 'Logo URL'),
+
             ],
           ),
         ),
@@ -232,17 +240,21 @@ for (var feeSummary in feeSummarySnapshot.docs) {
                 }
 
                 // Add new school
-                await FirebaseFirestore.instance
-                    .collection('schools')
-                    .doc(codeController.text.trim())
-                    .set({
-                  'name': nameController.text.trim(),
-                  'code': codeController.text.trim(),
-                  'address': addressController.text.trim(),
-                  'phone': phoneController.text.trim(),
-                  'email': emailController.text.trim(),
-                  'createdAt': FieldValue.serverTimestamp(),
-                });
+        await FirebaseFirestore.instance
+  .collection('schools')
+  .doc(codeController.text.trim())
+  .set({
+    'name':           nameController.text.trim(),
+    'code':           codeController.text.trim(),
+    'address':        addressController.text.trim(),
+    'phone':          phoneController.text.trim(),
+    'email':          emailController.text.trim(),
+    'poBox':          poBoxController.text.trim(),       // NEW
+    'principalName':  principalController.text.trim(),   // NEW
+    'logoUrl':        logoUrlController.text.trim(),     // NEW
+    'createdAt':      FieldValue.serverTimestamp(),
+  });
+
 
                 Navigator.of(ctx).pop();
                 _loadDashboardStats(); // Refresh stats
@@ -844,11 +856,17 @@ class SchoolsTab extends StatelessWidget {
   }
 
   void _showEditSchoolDialog(BuildContext context, DocumentSnapshot school) {
-    final data = school.data() as Map<String, dynamic>;
-    final nameController = TextEditingController(text: data['name'] as String?);
-    final addressController = TextEditingController(text: data['address'] as String?);
-    final phoneController = TextEditingController(text: data['phone'] as String?);
-    final emailController = TextEditingController(text: data['email'] as String?);
+    final data                = school.data() as Map<String, dynamic>;
+final nameController      = TextEditingController(text: data['name'] as String?);
+final addressController   = TextEditingController(text: data['address'] as String?);
+final phoneController     = TextEditingController(text: data['phone'] as String?);
+final emailController     = TextEditingController(text: data['email'] as String?);
+
+// NEW – prefill extra fields
+final poBoxController       = TextEditingController(text: data['poBox'] as String?);
+final principalController   = TextEditingController(text: data['principalName'] as String?);
+final logoUrlController     = TextEditingController(text: data['logoUrl'] as String?);
+
 
     showDialog(
       context: context,
@@ -898,6 +916,9 @@ class SchoolsTab extends StatelessWidget {
                   'phone': phoneController.text.trim(),
                   'email': emailController.text.trim(),
                   'updatedAt': FieldValue.serverTimestamp(),
+                  'poBox':         poBoxController.text.trim(),       // NEW
+'principalName': principalController.text.trim(),   // NEW
+'logoUrl':       logoUrlController.text.trim(),     
                 });
 
                 Navigator.of(ctx).pop();
@@ -1491,7 +1512,7 @@ class UsersTab extends StatelessWidget {
 
   void _showParentDetailsDialog(BuildContext context, String schoolId, DocumentSnapshot parent) {
     final data = parent.data() as Map<String, dynamic>;
-    
+final parentAdmissionNo = data['admissionNo'] as String?;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1527,7 +1548,7 @@ class UsersTab extends StatelessWidget {
                     .collection('schools')
                     .doc(schoolId)
                     .collection('students')
-                    .where('parentId', isEqualTo: parent.id)
+                   .where('admissionNo', isEqualTo: parentAdmissionNo)
                     .get(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {

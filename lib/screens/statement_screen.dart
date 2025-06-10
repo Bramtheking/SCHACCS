@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:schaccs/screens/login_screen.dart';
+import 'package:schaccs/screens/parent_dashboard.dart';
 
 class StatementScreen extends StatefulWidget {
   static const String routeName = '/statement';
@@ -1382,7 +1382,7 @@ class _StatementScreenState extends State<StatementScreen> {
           icon: Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
             Navigator.of(context).pushNamedAndRemoveUntil(
-              LoginScreen.routeName,
+              ParentDashboard.routeName,
               (Route<dynamic> route) => false,
               arguments: widget.schoolCode,
             );

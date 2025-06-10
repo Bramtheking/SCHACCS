@@ -1276,18 +1276,27 @@ class _NewsletterScreenState extends State<NewsletterScreen>
     );
   }
 
-  Stream<QuerySnapshot> _getFeaturedStoriesStream() {
-    final now = Timestamp.now();
-    return FirebaseFirestore.instance
-        .collection('schools')
-        .doc(widget.schoolCode)
-        .collection('newsletters')
-        .where('publishedAt', isLessThanOrEqualTo: now)
-        .where('priority', isEqualTo: 'urgent')
-        .orderBy('publishedAt', descending: true)
-        .limit(5)
-        .snapshots();
+ Stream<QuerySnapshot> _getFeaturedStoriesStream() {
+  final now = Timestamp.now();
+  
+  // Build query based on selected category
+  Query query = FirebaseFirestore.instance
+      .collection('schools')
+      .doc(widget.schoolCode)
+      .collection('newsletters')
+      .where('publishedAt', isLessThanOrEqualTo: now);
+
+  // Apply category filter if not 'all'
+  if (_selectedCategory != 'all') {
+    query = query.where('category', isEqualTo: _selectedCategory);
   }
+
+  // Get the latest stories from the selected category (not just urgent ones)
+  return query
+      .orderBy('publishedAt', descending: true)
+      .limit(5)
+      .snapshots();
+}
 
   Stream<QuerySnapshot> _getNewsletterStream() {
     final now = Timestamp.now();
