@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class SuperAdminDashboard extends StatefulWidget {
   static const routeName = '/super-admin-dashboard';
@@ -121,7 +120,6 @@ for (var feeSummary in feeSummarySnapshot.docs) {
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
-              await FirebaseAuth.instance.signOut();
               Navigator.of(context).pushReplacementNamed('/');
             },
           ),
@@ -365,22 +363,19 @@ ModernField(controller: logoUrlController,   label: 'Logo URL'),
 
                 try {
                   // Create user in Firebase Auth
-                  final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-                    email: emailController.text.trim(),
-                    password: passwordController.text.trim(),
-                  );
+                  
                   
                   // Add admin to Firestore
-                  await FirebaseFirestore.instance
-                      .collection('schools')
-                      .doc(selectedSchool)
-                      .collection('admins')
-                      .doc(userCredential.user!.uid)
-                      .set({
-                    'name': nameController.text.trim(),
-                    'email': emailController.text.trim(),
-                    'role': 'admin',
-                    'createdAt': FieldValue.serverTimestamp(),
+                 await FirebaseFirestore.instance
+      .collection('schools')
+      .doc(selectedSchool)
+      .collection('admins')
+      .add({  // Use .add() instead of .doc(uid)
+    'name': nameController.text.trim(),
+    'email': emailController.text.trim(),
+    'password': passwordController.text.trim(),
+    'role': 'admin',
+    'createdAt': FieldValue.serverTimestamp(),
                   });
 
                   Navigator.of(ctx).pop();
@@ -1224,20 +1219,67 @@ class AdminsTab extends StatelessWidget {
               shape: const StadiumBorder(),
             ),
             child: const Text('Send Reset Email'),
-            onPressed: () async {
-              try {
-                await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-                Navigator.of(ctx).pop();
+           onPressed: () async {
+  // Show a dialog to enter new password instead of sending email
+  final passwordController = TextEditingController();
+  Navigator.of(ctx).pop(); // Close current dialog
+  
+  showDialog(
+    context: context,
+    builder: (resetCtx) => AlertDialog(
+      title: const Text('Reset Password'),
+      content: TextField(
+        controller: passwordController,
+        obscureText: true,
+        decoration: const InputDecoration(
+          labelText: 'New Password',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          child: const Text('Cancel'),
+          onPressed: () => Navigator.of(resetCtx).pop(),
+        ),
+        ElevatedButton(
+          child: const Text('Update Password'),
+          onPressed: () async {
+            if (passwordController.text.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Password cannot be empty')),
+              );
+              return;
+            }
+            
+            try {
+              // Find and update the admin's password in Firestore
+              final adminQuery = await FirebaseFirestore.instance
+                  .collectionGroup('admins')
+                  .where('email', isEqualTo: email)
+                  .get();
+              
+              if (adminQuery.docs.isNotEmpty) {
+                await adminQuery.docs.first.reference.update({
+                  'password': passwordController.text.trim(),
+                  'updatedAt': FieldValue.serverTimestamp(),
+                });
                 
+                Navigator.of(resetCtx).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Password reset email sent')),
-                );
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error sending reset email: $e')),
+                  const SnackBar(content: Text('Password updated successfully')),
                 );
               }
-            },
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error updating password: $e')),
+              );
+            }
+          },
+        ),
+      ],
+    ),
+  );
+},
           ),
         ],
       ),
